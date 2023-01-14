@@ -1,0 +1,16 @@
+{
+  "domain": "stromnetzgraz",
+  "name": "Stromnetz Graz",
+  "config_flow": true,
+  "documentation": "https://github.com/dreautall/ha-stromnetzgraz",
+  "requirements": ["pandas==1.4.3", "pyJWT==2.5.0", "stromnetzgraz==0.1.1"],
+  "ssdp": [],
+  "zeroconf": [],
+  "homekit": {},
+  "dependencies": [],
+  "codeowners": [
+    "@dreautall"
+  ],
+  "iot_class": "cloud_polling",
+  "version": "0.0.1"
+}
