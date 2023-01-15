@@ -5,7 +5,7 @@
         },
         "error": {
             "cannot_connect": "Verbindungsfehler",
-            "invalid_auth": "Ungültige Anmeldedaten",
+            "invalid_login": "Ungültige Anmeldedaten",
             "unknown": "Unerwarteter Fehler"
         },
         "step": {
