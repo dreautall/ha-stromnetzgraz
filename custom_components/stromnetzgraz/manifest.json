@@ -4,7 +4,7 @@
   "config_flow": true,
   "documentation": "https://github.com/dreautall/ha-stromnetzgraz",
   "issue_tracker": "https://github.com/dreautall/ha-stromnetzgraz/issues",
-  "requirements": ["pandas==1.4.3", "pyJWT==2.5.0", "stromnetzgraz==0.1.3"],
+  "requirements": ["pandas==1.4.3", "pyJWT==2.5.0", "stromnetzgraz==0.1.4"],
   "ssdp": [],
   "zeroconf": [],
   "homekit": {},
@@ -13,5 +13,5 @@
     "@dreautall"
   ],
   "iot_class": "cloud_polling",
-  "version": "0.1.2"
+  "version": "0.1.3"
 }
