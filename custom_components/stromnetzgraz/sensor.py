@@ -284,7 +284,6 @@ class SNGrazDataCoordinator(DataUpdateCoordinator):
                 has_sum=True,
                 name=f"{meter._short_name} Consumption",
                 source=DOMAIN,
-                state_unit_of_measurement=ENERGY_KILO_WATT_HOUR,
                 statistic_id=statistic_id,
                 unit_of_measurement=ENERGY_KILO_WATT_HOUR,
             )
