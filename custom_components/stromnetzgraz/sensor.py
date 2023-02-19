@@ -52,7 +52,6 @@ SENSORS: tuple[SensorEntityDescription, ...] = (
         key="lastMeterConsumption",
         name="Meter Consumption",
         icon="mdi:lightning-bolt-circle",
-        device_class=SensorDeviceClass.ENERGY,
         native_unit_of_measurement=ENERGY_KILO_WATT_HOUR,
         state_class=SensorStateClass.MEASUREMENT,
     ),
