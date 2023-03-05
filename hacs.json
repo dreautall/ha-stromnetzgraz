@@ -1,5 +1,5 @@
 {
     "name": "Stromnetz Graz Integration",
-    "render_readme": true,
-    "country": "AT"
+    "country": "AT",
+    "render_readme": true
 }
