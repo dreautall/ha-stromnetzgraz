@@ -188,7 +188,7 @@ class SNGrazDataCoordinator(DataUpdateCoordinator):
                 1,
                 statistic_id,
                 True,
-                {},
+                set(),
             )
             if not last_stats:
                 # First time we insert 5 years of data (if available)

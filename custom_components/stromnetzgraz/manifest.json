@@ -12,6 +12,6 @@
   "issue_tracker": "https://github.com/dreautall/ha-stromnetzgraz/issues",
   "requirements": ["pandas==2.0.2", "pyJWT==2.7.0", "stromnetzgraz==0.1.5"],
   "ssdp": [],
-  "version": "0.1.9",
+  "version": "0.1.10",
   "zeroconf": []
 }
