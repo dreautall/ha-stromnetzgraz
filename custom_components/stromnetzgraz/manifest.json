@@ -10,8 +10,8 @@
   "homekit": {},
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/dreautall/ha-stromnetzgraz/issues",
-  "requirements": ["pandas", "pyJWT", "stromnetzgraz==0.1.5"],
+  "requirements": ["pandas", "pyJWT", "stromnetzgraz==0.1.8"],
   "ssdp": [],
-  "version": "0.1.11",
+  "version": "0.1.12",
   "zeroconf": []
 }
