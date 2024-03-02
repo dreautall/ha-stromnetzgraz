@@ -24,7 +24,7 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
-    ENERGY_KILO_WATT_HOUR,
+    UnitOfEnergy,
     CONF_BASE,
 )
 from homeassistant.core import HomeAssistant
@@ -52,7 +52,7 @@ SENSORS: tuple[SensorEntityDescription, ...] = (
         key="lastMeterConsumption",
         name="Meter Consumption",
         icon="mdi:lightning-bolt-circle",
-        native_unit_of_measurement=ENERGY_KILO_WATT_HOUR,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         state_class=SensorStateClass.MEASUREMENT,
     ),
     SensorEntityDescription(
@@ -60,7 +60,7 @@ SENSORS: tuple[SensorEntityDescription, ...] = (
         name="Meter Reading",
         icon="mdi:meter-electric",
         device_class=SensorDeviceClass.ENERGY,
-        native_unit_of_measurement=ENERGY_KILO_WATT_HOUR,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         state_class=SensorStateClass.TOTAL_INCREASING,
     ),
 )
@@ -293,7 +293,7 @@ class SNGrazDataCoordinator(DataUpdateCoordinator):
                 name=f"{meter._short_name} Consumption",
                 source=DOMAIN,
                 statistic_id=statistic_id,
-                unit_of_measurement=ENERGY_KILO_WATT_HOUR,
+                unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
             )
             _LOGGER.info(f"adding {len(statistics)} entries to {statistic_id}")
             # async_import_statistics(self.hass, metadata, statistics)
