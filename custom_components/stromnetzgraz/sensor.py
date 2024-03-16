@@ -73,7 +73,6 @@ async def async_setup_entry(
 
     conn = hass.data[DOMAIN]
 
-    coordinator: SNGrazDataCoordinator | None = None
     entities: list[SNGrazSensor] = []
 
     base_readings = entry.data.get(CONF_BASE)
@@ -91,7 +90,11 @@ async def async_setup_entry(
         raise PlatformNotReady() from err
 
     for installation in conn.get_installations():
+        _LOGGER.debug(f"Got installation {installation._installation_id}")
+        coordinator: SNGrazDataCoordinator | None = None
+
         for meter in installation.get_meters():
+            _LOGGER.debug(f"Got meter {meter.id}")
             if str(meter.id) not in base_readings:
                 if (base_reading := await meter.get_first_reading()) is None:
                     _LOGGER.error("could not get first reading")
@@ -102,8 +105,10 @@ async def async_setup_entry(
                 hass.config_entries.async_update_entry(entry, data=data)
 
             if coordinator is None:
+                _LOGGER.debug(f"creating new coordinator")
                 coordinator = SNGrazDataCoordinator(hass, installation)
             for entity_description in SENSORS:
+                _LOGGER.debug(f"adding entity")
                 entities.append(
                     SNGrazSensor(meter, installation, coordinator, entity_description)
                 )
