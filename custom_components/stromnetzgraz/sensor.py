@@ -23,10 +23,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import (
-    UnitOfEnergy,
-    CONF_BASE,
-)
+from homeassistant.const import UnitOfEnergy, CONF_BASE, CURRENCY_EURO
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import PlatformNotReady
 from homeassistant.helpers.entity import DeviceInfo
@@ -35,6 +32,7 @@ from homeassistant.helpers.update_coordinator import (
     CoordinatorEntity,
     DataUpdateCoordinator,
 )
+from homeassistant.components.recorder import get_instance, history
 
 from sngraz import SNGrazMeter, SNGrazInstallation
 from .const import DOMAIN
@@ -186,6 +184,7 @@ class SNGrazDataCoordinator(DataUpdateCoordinator):
 
             _LOGGER.info(f"adding historical statistics for {meter._short_name}")
             statistic_id = f"{DOMAIN}:energy_consumption_{meter.id}"
+            price_stat_id = f"{DOMAIN}:energy_price_{meter.id}"
 
             last_stats = await get_instance(self.hass).async_add_executor_job(
                 get_last_statistics,
@@ -226,7 +225,7 @@ class SNGrazDataCoordinator(DataUpdateCoordinator):
                 self.hass,
                 start,
                 None,
-                [statistic_id],
+                [statistic_id, price_stat_id],
                 "hour",
                 None,
                 {"sum"},
@@ -240,11 +239,18 @@ class SNGrazDataCoordinator(DataUpdateCoordinator):
                     )
                 else:
                     last_stats_time = last_stats_time.replace(tzinfo=None)
+
+                if len(stat[price_stat_id]) != 0:
+                    _priceSum = stat[price_stat_id][0]["sum"]
+                else:
+                    _priceSum = 0.0
             else:
                 _sum = 0.0
+                _priceSum = 0.0
                 last_stats_time = None
 
             statistics = []
+            price_stats = []
             last_reading = _sum
             for start, data in df_dict.items():
                 if "CONSUMP" not in data or "MR" not in data:
@@ -283,6 +289,41 @@ class SNGrazDataCoordinator(DataUpdateCoordinator):
 
                 statistics.append(new_stat)
 
+                # Price
+                price_entity = self.config_entry.options.get(str(meter.id))
+                if price_entity is None:
+                    continue
+
+                print("getting price from " + str(price_entity) + " for " + str(start))
+
+                prices = await get_instance(self.hass).async_add_executor_job(
+                    history.state_changes_during_period,
+                    self.hass,
+                    start,
+                    start,
+                    price_entity,
+                )
+                if len(prices) == 0:
+                    # continue
+                    # TODO, remove else, remove line below
+                    price = float(consump) * float(50)
+                else:
+                    price = float(consump) * float(
+                        prices.get(price_entity, [])[0].state
+                    )
+
+                _priceSum += price
+
+                print("Price is " + str(price) + ", bringin sum to " + str(_priceSum))
+
+                new_price_stat = StatisticData(
+                    start=start,
+                    state=price,
+                    sum=_priceSum,
+                )
+
+                price_stats.append(new_price_stat)
+
             # metadata = StatisticMetaData(
             #    has_mean=False,
             #    has_sum=sensor.get("has_sum"),
@@ -303,3 +344,27 @@ class SNGrazDataCoordinator(DataUpdateCoordinator):
             _LOGGER.info(f"adding {len(statistics)} entries to {statistic_id}")
             # async_import_statistics(self.hass, metadata, statistics)
             async_add_external_statistics(self.hass, metadata, statistics)
+
+            if _priceSum != 0:
+                price_metadata = StatisticMetaData(
+                    has_mean=False,
+                    has_sum=True,
+                    name=f"{meter._short_name} Total Price",
+                    source=DOMAIN,
+                    statistic_id=price_stat_id,
+                    unit_of_measurement=CURRENCY_EURO,
+                )
+                _LOGGER.info(f"adding {len(price_stats)} entries to {price_stat_id}")
+                async_add_external_statistics(self.hass, price_metadata, price_stats)
+
+            """
+            oldstats = await get_instance(self.hass).async_add_executor_job(
+                history.state_changes_during_period,
+                self.hass,
+                datetime.fromtimestamp(0).replace(tzinfo=dt_util.UTC),
+                datetime.now().replace(tzinfo=dt_util.UTC),
+                user_input[CONF_ENTITIES],
+            )
+            print(oldstats)
+            print(oldstats.get(user_input[CONF_ENTITIES], []))
+            """
