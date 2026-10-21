@@ -1,5 +1,6 @@
 {
     "name": "Stromnetz Graz Integration",
     "country": "AT",
-    "render_readme": true
+    "render_readme": true,
+    "homeassistant": "2025.11.0"
 }
