@@ -1,0 +1,49 @@
+name: Bug report
+description: The integration fails, shows wrong values or logs errors
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Missing or late data is often on Stromnetz Graz's side. Check the
+        [web portal](https://webportal.stromnetz-graz.at/) first: if a day is
+        missing there, it is missing here too.
+  - type: input
+    id: ha-version
+    attributes:
+      label: Home Assistant version
+      placeholder: "2026.11.2"
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Integration version
+      description: Shown in HACS, or `version` in `manifest.json`.
+      placeholder: "0.1.15"
+    validations:
+      required: true
+  - type: dropdown
+    id: ime
+    attributes:
+      label: IME mode (15-minute values) enabled?
+      options:
+        - "Yes"
+        - "No"
+        - Don't know
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What you expected vs. what happened
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: >-
+        Lines from Settings → System → Logs mentioning `stromnetzgraz`.
+        Redact your e-mail address, password and meter IDs.
+      render: shell

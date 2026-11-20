@@ -14,8 +14,9 @@ small and upstream-friendly.
 
 ## Checks
 
-There is no local test suite. CI runs `validate_hacs.yaml` (HACS action) and
-`validate_hassfest.yaml` (HA's hassfest) on push and PR. Those are the gate.
+There is no local test suite. CI runs the `hacs` and `hassfest` jobs on every PR;
+both are required checks (ruleset managed in `mainman94/homelab`,
+`terraform/github`). Renaming a job silently breaks the ruleset — change both together.
 
 ## Conventions
 

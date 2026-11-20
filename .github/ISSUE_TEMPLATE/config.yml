@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/mainman94/ha-stromnetzgraz/security/advisories/new
+    about: Report privately, not as a public issue.
+  - name: Missing or wrong data in the Stromnetz Graz portal
+    url: https://www.stromnetz-graz.at/sgg/stromzaehler/intelligenter-stromzaehler/faqs
+    about: If the web portal shows the same gap, the data problem is Stromnetz Graz's.

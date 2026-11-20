@@ -2,17 +2,23 @@ name: Validate
 
 on:
   push:
+    branches: [master]
   pull_request:
   schedule:
     - cron: "0 0 * * *"
 
+permissions:
+  contents: read
+
 jobs:
-  validate:
-    runs-on: "ubuntu-latest"
+  hacs:
+    runs-on: ubuntu-latest
     steps:
-      - uses: "actions/checkout@v7"
-      - name: HACS validation
-        uses: "hacs/action@main"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          category: "integration"
-          ignore: "brands"
+          persist-credentials: false
+      - name: HACS validation
+        uses: hacs/action@d556e736723344f83838d08488c983a15381059a # 22.5.0
+        with:
+          category: integration
+          ignore: brands
