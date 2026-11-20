@@ -16,5 +16,13 @@
                 }
             }
         }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "title": "Strompreise",
+                "description": "Optional: Wähle pro Zähler eine Entität mit dem aktuellen Strompreis pro kWh (EUR/kWh, ct/kWh oder EUR/MWh). Aus ihrem Verlauf entsteht die Statistik `stromnetzgraz:energy_cost_` plus Zähler-ID, die du im Energie-Dashboard als \"Entität, die die Gesamtkosten erfasst\" auswählen kannst. Kosten lassen sich nur so weit zurück berechnen, wie Home Assistant den Preisverlauf speichert.\n\n{meters}"
+            }
+        }
     }
 }

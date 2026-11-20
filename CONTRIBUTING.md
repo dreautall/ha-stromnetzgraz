@@ -18,7 +18,14 @@ Home Assistant custom integration that imports Stromnetz Graz smart-meter data.
 
 ## Testing a change
 
-There is no local test suite. Copy `custom_components/stromnetzgraz/` into the
+`tests/` covers the cost calculation (`cost.py`), the one part that runs
+without Home Assistant:
+
+```shell
+uvx --with pandas pytest tests/
+```
+
+Everything else needs a real instance. Copy `custom_components/stromnetzgraz/` into the
 `custom_components/` folder of a Home Assistant instance with a Stromnetz Graz
 login, restart Home Assistant and check:
 

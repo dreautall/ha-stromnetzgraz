@@ -16,5 +16,13 @@
                 }
             }
         }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "title": "Energy prices",
+                "description": "Optional: for each meter, pick an entity with the current electricity price per kWh (EUR/kWh, ct/kWh or EUR/MWh). Its history is turned into the statistic `stromnetzgraz:energy_cost_` plus the meter ID, which you can select as \"entity tracking the total costs\" in the energy dashboard. Costs can only be calculated as far back as Home Assistant keeps the price history.\n\n{meters}"
+            }
+        }
     }
 }

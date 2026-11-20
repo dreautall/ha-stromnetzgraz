@@ -3,13 +3,14 @@ from __future__ import annotations
 
 import asyncio
 from datetime import timedelta, datetime
+from functools import partial
 import logging
 import pandas
 import numpy
 
 import aiohttp
 
-from homeassistant.components.recorder import get_instance
+from homeassistant.components.recorder import get_instance, history
 from homeassistant.components.recorder.models import (
     StatisticData,
     StatisticMeanType,
@@ -43,6 +44,7 @@ from homeassistant.util.unit_conversion import EnergyConverter
 
 from sngraz import SNGrazMeter, SNGrazInstallation
 from .const import DOMAIN
+from .cost import add_cost, price_factor
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -217,6 +219,13 @@ class SNGrazDataCoordinator(DataUpdateCoordinator):
             # However the consumption actually belongs to the 8:00-9:00 bin.
             # Strictly speaking, the same applies for any binning and reading interval
             df["readTime"] = df["readTime"] - timedelta(seconds=1)
+            if price_entity := self.config_entry.options.get(str(meter.id)):
+                df = add_cost(
+                    df,
+                    await self._fetch_prices(
+                        price_entity, df["readTime"].min(), df["readTime"].max()
+                    ),
+                )
             df_hour = (
                 df.groupby(pandas.Grouper(freq="h", key="readTime"))
                 .agg(
@@ -224,6 +233,7 @@ class SNGrazDataCoordinator(DataUpdateCoordinator):
                         "CONSUMP": lambda x: numpy.nan if len(x) == 0 else sum(x),
                         # the API sometimes returns no meter readings at all (e.g. after a missing day)
                         **({"MR": lambda x: numpy.nan if len(x) == 0 else max(x)} if "MR" in df else {}),
+                        **({"COST": lambda x: x.sum(min_count=1)} if "COST" in df else {}),
                     }
                 )
                 .dropna(how="all")
@@ -314,3 +324,78 @@ class SNGrazDataCoordinator(DataUpdateCoordinator):
             _LOGGER.info(f"adding {len(statistics)} entries to {statistic_id}")
             # async_import_statistics(self.hass, metadata, statistics)
             async_add_external_statistics(self.hass, metadata, statistics)
+
+            if "COST" in df_hour:
+                await self._insert_cost_statistics(meter, df_hour["COST"].dropna())
+
+    async def _fetch_prices(
+        self, entity_id: str, start: pandas.Timestamp, end: pandas.Timestamp
+    ) -> list[tuple[datetime, float]]:
+        """Price history of entity_id in <currency>/kWh, including the price valid at start."""
+        states = await get_instance(self.hass).async_add_executor_job(
+            partial(
+                history.state_changes_during_period,
+                self.hass,
+                start.to_pydatetime(),
+                end.to_pydatetime(),
+                entity_id,
+                no_attributes=True,
+                include_start_time_state=True,
+            )
+        )
+        current = self.hass.states.get(entity_id)
+        factor = price_factor(
+            current.attributes.get("unit_of_measurement") if current else None
+        )
+        prices = []
+        for state in states.get(entity_id, []):
+            try:
+                prices.append((state.last_changed, float(state.state) * factor))
+            except ValueError:  # unknown / unavailable
+                continue
+        return prices
+
+    async def _insert_cost_statistics(
+        self, meter: SNGrazMeter, costs: pandas.Series
+    ) -> None:
+        """Insert the cost statistic; like consumption, the fetched window is re-summed each update."""
+        if costs.empty:
+            return
+        statistic_id = f"{DOMAIN}:energy_cost_{meter.id}"
+
+        stat = await get_instance(self.hass).async_add_executor_job(
+            statistics_during_period,
+            self.hass,
+            costs.index[0].to_pydatetime() - timedelta(hours=1),
+            None,
+            [statistic_id],
+            "hour",
+            None,
+            {"sum"},
+        )
+        _sum, last_start = 0.0, None
+        if stat:
+            _sum = stat[statistic_id][0]["sum"]
+            last_start = stat[statistic_id][0]["start"]
+            if isinstance(last_start, datetime):
+                last_start = last_start.timestamp()
+
+        statistics = []
+        for start, cost in costs.items():
+            start = start.to_pydatetime().replace(minute=0, second=0, microsecond=0)
+            if last_start is not None and start.timestamp() <= last_start:
+                continue
+            _sum += cost
+            statistics.append(StatisticData(start=start, state=cost, sum=_sum))
+
+        metadata = StatisticMetaData(
+            mean_type=StatisticMeanType.NONE,
+            has_sum=True,
+            name=f"{meter._short_name} Cost",
+            source=DOMAIN,
+            statistic_id=statistic_id,
+            unit_class=None,
+            unit_of_measurement=self.hass.config.currency,
+        )
+        _LOGGER.info(f"adding {len(statistics)} entries to {statistic_id}")
+        async_add_external_statistics(self.hass, metadata, statistics)

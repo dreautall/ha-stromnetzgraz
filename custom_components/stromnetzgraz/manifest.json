@@ -12,6 +12,6 @@
   "issue_tracker": "https://github.com/mainman94/ha-stromnetzgraz/issues",
   "requirements": ["pandas", "stromnetzgraz==0.1.8"],
   "ssdp": [],
-  "version": "0.1.15",
+  "version": "0.1.16",
   "zeroconf": []
 }

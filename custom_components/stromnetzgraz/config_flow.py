@@ -13,7 +13,9 @@ from homeassistant.const import (
     CONF_USERNAME,
     CONF_PASSWORD,
 )
+from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
+from homeassistant.helpers import selector
 
 from sngraz import InvalidLogin
 from . import async_create_api
@@ -72,3 +74,50 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             )
 
         return self.async_create_entry(title=sn._username, data=user_input)
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(
+        config_entry: config_entries.ConfigEntry,
+    ) -> config_entries.OptionsFlow:
+        """Create the options flow."""
+        return OptionsFlowHandler()
+
+
+class OptionsFlowHandler(config_entries.OptionsFlowWithReload):
+    """Pick a price entity per meter; its history is turned into a cost statistic."""
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Manage the options."""
+        if user_input is not None:
+            return self.async_create_entry(data=user_input)
+
+        meters = [
+            meter
+            for installation in self.hass.data[DOMAIN].get_installations()
+            for meter in installation.get_meters()
+        ]
+        price_selector = selector.EntitySelector(
+            selector.EntitySelectorConfig(domain=["sensor", "number", "input_number"])
+        )
+        # suggested_value, not default: a cleared field must stay cleared.
+        schema = vol.Schema(
+            {
+                vol.Optional(
+                    str(meter.id),
+                    description={
+                        "suggested_value": self.config_entry.options.get(str(meter.id))
+                    },
+                ): price_selector
+                for meter in meters
+            }
+        )
+        return self.async_show_form(
+            step_id="init",
+            data_schema=schema,
+            description_placeholders={
+                "meters": "\n".join(f"- `{m.id}`: {m._short_name}" for m in meters)
+            },
+        )

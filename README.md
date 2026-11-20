@@ -71,6 +71,29 @@ them.
 > to the energy dashboard. Those show the last reported value, not a running
 > total, so the dashboard numbers would be wrong.
 
+## Energy costs
+
+The energy dashboard can't attach a price entity to a statistic that is filled
+in after the fact (you get *"Cannot specify … more than once"*). Instead, the
+integration can calculate the cost itself:
+
+1. **Settings → Devices & services → Stromnetz Graz → Configure.**
+2. For each meter, pick an entity with the current price per kWh: a sensor
+   from a spot-price integration (EPEX Spot, Nord Pool, aWATTar, …), a
+   `number`, or an `input_number` for a fixed tariff. `EUR/kWh`, `ct/kWh` and
+   `EUR/MWh` are converted automatically, based on the entity's unit.
+3. In the energy dashboard, edit the grid consumption, choose **Use an entity
+   tracking the total costs**, and pick `stromnetzgraz:energy_cost_<meter id>`.
+
+Each quarter-hour reading is multiplied by the price that was valid at that
+time, so 15-minute and hourly spot prices both work. The cost is in your Home
+Assistant currency.
+
+Costs only go back as far as Home Assistant has kept the price entity's
+history (the recorder keeps 10 days by default). Readings from before that get
+no cost. Clearing the field stops new costs from being calculated, but costs
+already stored stay.
+
 ## Limitations
 
 - **No live data.** Stromnetz Graz publishes the previous day's values, so
