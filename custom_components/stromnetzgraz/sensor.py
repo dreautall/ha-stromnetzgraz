@@ -102,8 +102,13 @@ async def async_setup_entry(
 
         for meter in installation.get_meters():
             _LOGGER.debug(f"Got meter {meter.id}")
+            # sngraz rounds readingsAvailableSince down to the hour, but the API rejects
+            # (HTTP 400) any fromDate before it; round up to the next hour instead.
+            if (first := await meter._get_first_reading_date()) is not None:
+                meter._first_reading_date = first.replace(second=0) + timedelta(hours=1)
+
             if str(meter.id) not in base_readings:
-                # sngraz's first-reading query can fail (seen: HTTP 400); retried on the next setup.
+                # Fails when the API sends no meter reading (MR); retried on the next setup.
                 if (base_reading := await meter.get_first_reading()) is None:
                     _LOGGER.warning(
                         "could not get first reading for %s, summing consumption instead",
@@ -215,6 +220,8 @@ class SNGrazDataCoordinator(DataUpdateCoordinator):
             else:
                 # We update the statistics with the last 30 days of data to handle corrections in the data.
                 _data = meter._data
+            if not _data:
+                continue
 
             # HA statistics finest interval is hourly, so let's break it down by hour
             # Also, do some filtering afterwards, pandas otherwise creates "empty" rows
