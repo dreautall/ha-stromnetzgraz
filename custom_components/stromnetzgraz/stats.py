@@ -31,44 +31,51 @@ def _hour(ts: pandas.Timestamp) -> datetime:
     return ts.to_pydatetime().replace(minute=0, second=0, microsecond=0)
 
 
+def _value(x: Any) -> float | None:
+    """None for missing values; 0 is a valid reading."""
+    return None if x is None or x != x else x  # x != x is a NaN check.
+
+
 def build_statistics(
     df_hour: pandas.DataFrame,
-    base_reading: float,
+    base_reading: float | None,
     last_sum: float,
     last_start: float | None,
 ) -> list[dict[str, Any]]:
     """Turn hourly readings into statistic rows (start, state, sum).
 
-    `last_sum` / `last_start` (POSIX timestamp) describe the newest stored statistic:
-    hours up to and including it are skipped and the sum continues from it. With a
-    `base_reading` the sum is the meter reading minus it, which self-corrects drift.
-    Without one, hours lacking consumption are skipped: a derived value is too unreliable.
+    `last_sum` / `last_start` (POSIX timestamp) describe the stored statistic the
+    window starts after: hours up to and including it are skipped and the sum
+    continues from it. With a `base_reading` (the meter's first reading) the sum is
+    the meter reading minus it, which corrects any drift; hours without a meter
+    reading continue from there with their consumption. An hour without consumption
+    gets it from the difference of meter readings, if both are known.
     """
     statistics: list[dict[str, Any]] = []
     _sum = last_sum
-    last_reading = last_sum
+    # With a base reading, sum == meter reading - base, so the last meter reading is known.
+    last_mr = None if base_reading is None else base_reading + last_sum
     for start, data in df_hour.to_dict(orient="index").items():
-        consump = data.get("CONSUMP")
-        mr = data.get("MR")
-        if not mr or mr != mr:  # x != x is a NaN check.
-            mr = None  # e.g. new meters report consumption without meter readings
+        consump = _value(data.get("CONSUMP"))
+        mr = _value(data.get("MR"))  # e.g. new meters report consumption without it
 
-        if not consump or consump != consump:
-            if mr is None or base_reading == 0:
+        if consump is None:
+            if mr is None or last_mr is None:
                 continue
-            consump = mr - last_reading
-            last_reading = mr
+            consump = mr - last_mr
+        if mr is not None:
+            last_mr = mr
 
         start = _hour(start)
         # Compare absolute timestamps: wall-clock times repeat at the end of DST.
         if last_start is not None and start.timestamp() <= last_start:
             continue
 
-        _sum += consump
-        row = {"start": start, "state": consump, "sum": _sum}
-        if base_reading != 0 and mr is not None:
-            row["sum"] = mr - base_reading
-        statistics.append(row)
+        if base_reading is not None and mr is not None:
+            _sum = mr - base_reading
+        else:
+            _sum += consump
+        statistics.append({"start": start, "state": consump, "sum": _sum})
     return statistics
 
 

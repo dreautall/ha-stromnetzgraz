@@ -1,13 +1,10 @@
 """Support for StromNetz Graz sensors."""
 from __future__ import annotations
 
-import asyncio
 from datetime import timedelta, datetime
 from functools import partial
 import logging
 import pandas
-
-import aiohttp
 
 from homeassistant.components.recorder import get_instance, history
 from homeassistant.components.recorder.models import (
@@ -30,7 +27,6 @@ from homeassistant.const import (
     CONF_BASE,
 )
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import PlatformNotReady
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import (
@@ -47,9 +43,6 @@ from .stats import build_cost_statistics, build_statistics, hourly_frame
 
 _LOGGER = logging.getLogger(__name__)
 
-ICON = "mdi:lightning-bolt-circle"
-SCAN_INTERVAL = timedelta(hours=6)
-MIN_TIME_BETWEEN_UPDATES = timedelta(hours=6)
 PARALLEL_UPDATES = 0
 
 
@@ -75,60 +68,24 @@ SENSORS: tuple[SensorEntityDescription, ...] = (
 async def async_setup_entry(
     hass: HomeAssistant, entry: SNGrazConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    """Set up the StromNetz Graz sensor."""
-
-    conn = entry.runtime_data
-
+    """Set up the StromNetz Graz sensor; installations and meters are fetched in __init__."""
     entities: list[SNGrazSensor] = []
-
-    base_readings = entry.data.get(CONF_BASE)
-    if not base_readings:
-        base_readings = {}
-
-    # This fills in all installations and meters
-    try:
-        await conn.update_info()
-    except asyncio.TimeoutError as err:
-        _LOGGER.error("Timeout connecting to API: %s ", err)
-        raise PlatformNotReady() from err
-    except aiohttp.ClientError as err:
-        _LOGGER.error("Error connecting to API: %s ", err)
-        raise PlatformNotReady() from err
-
-    for installation in conn.get_installations():
-        _LOGGER.debug(f"Got installation {installation._installation_id}")
-        coordinator: SNGrazDataCoordinator | None = None
-
+    for installation in entry.runtime_data.get_installations():
+        _LOGGER.debug("Got installation %s", installation._installation_id)
+        coordinator = SNGrazDataCoordinator(hass, entry, installation)
         for meter in installation.get_meters():
-            _LOGGER.debug(f"Got meter {meter.id}")
-            # sngraz rounds readingsAvailableSince down to the hour, but the API rejects
-            # (HTTP 400) any fromDate before it; round up to the next hour instead.
-            if (first := await meter._get_first_reading_date()) is not None:
-                meter._first_reading_date = first.replace(second=0) + timedelta(hours=1)
+            _LOGGER.debug("Got meter %s", meter.id)
+            entities.extend(
+                SNGrazSensor(meter, installation, coordinator, description)
+                for description in SENSORS
+            )
+        # Not awaited: the first run can import five years of history. Not via
+        # update_before_add either, which refreshes once per entity (debounced to two).
+        entry.async_create_background_task(
+            hass, coordinator.async_refresh(), f"{DOMAIN} first refresh"
+        )
 
-            if str(meter.id) not in base_readings:
-                # Fails when the API sends no meter reading (MR); retried on the next setup.
-                if (base_reading := await meter.get_first_reading()) is None:
-                    _LOGGER.warning(
-                        "could not get first reading for %s, summing consumption instead",
-                        meter.id,
-                    )
-                else:
-                    base_readings[str(meter.id)] = base_reading
-
-                    data = {**entry.data, CONF_BASE: base_readings}
-                    hass.config_entries.async_update_entry(entry, data=data)
-
-            if coordinator is None:
-                _LOGGER.debug(f"creating new coordinator")
-                coordinator = SNGrazDataCoordinator(hass, installation)
-            for entity_description in SENSORS:
-                _LOGGER.debug(f"adding entity")
-                entities.append(
-                    SNGrazSensor(meter, installation, coordinator, entity_description)
-                )
-
-    async_add_entities(entities, True)
+    async_add_entities(entities)
 
 
 class SNGrazSensor(SensorEntity, CoordinatorEntity["SNGrazDataCoordinator"]):
@@ -170,11 +127,17 @@ class SNGrazSensor(SensorEntity, CoordinatorEntity["SNGrazDataCoordinator"]):
 class SNGrazDataCoordinator(DataUpdateCoordinator):
     """Handle Stromnetz Graz data and insert statistics."""
 
-    def __init__(self, hass, installation: SNGrazInstallation):
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        entry: SNGrazConfigEntry,
+        installation: SNGrazInstallation,
+    ):
         """Initialize the data handler."""
         super().__init__(
             hass,
             _LOGGER,
+            config_entry=entry,
             name="Stromnetz Graz Sensor",
             update_interval=timedelta(hours=1),
         )
@@ -191,14 +154,18 @@ class SNGrazDataCoordinator(DataUpdateCoordinator):
 
         for meter in self._installation.get_meters():
             if meter._data:
+                # None: no base reading known, statistics sum the consumption instead.
                 await self._insert_meter_statistics(
-                    meter, base_readings.get(str(meter.id), 0)
+                    meter, base_readings.get(str(meter.id))
                 )
 
     async def _last_statistic(
         self, statistic_id: str, since: datetime
     ) -> tuple[float, float | None]:
-        """Sum and start (POSIX timestamp) of the newest statistic from `since` on."""
+        """Sum and start (POSIX timestamp) of the first stored statistic from `since` on.
+
+        The whole fetched window is then re-summed from it, picking up corrections.
+        """
         stat = await get_instance(self.hass).async_add_executor_job(
             statistics_during_period,
             self.hass,
@@ -218,7 +185,7 @@ class SNGrazDataCoordinator(DataUpdateCoordinator):
         return row["sum"], start
 
     async def _insert_meter_statistics(
-        self, meter: SNGrazMeter, base_reading: float
+        self, meter: SNGrazMeter, base_reading: float | None
     ) -> None:
         """Insert the consumption (and, with a price entity, cost) statistics of one meter."""
         _LOGGER.info("adding historical statistics for %s", meter._short_name)
