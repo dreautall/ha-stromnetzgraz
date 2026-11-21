@@ -14,17 +14,24 @@ This is a maintained fork of
 It keeps working with current Home Assistant releases. These are the changes
 compared to upstream:
 
-- **Missing meter readings no longer break the integration.** When Stromnetz
-  Graz sends no meter readings for the fetched period (for example after a day
-  with no data), the update used to crash with `KeyError: 'MR'` and every
-  sensor went `unavailable`.
-- **Works with Home Assistant 2026.11 and later.** The statistics import sets
-  `mean_type` and `unit_class`, so HA no longer rejects it with the deprecation
-  warning.
-- **No blocking calls in the event loop.** Certificates are loaded off the
-  event loop.
-- **The same account can't be added twice.** A duplicate entry used to cause
-  `does not generate unique IDs` errors.
+- **Meters without meter readings get statistics.** Some meters only report
+  consumption. Their history used to be skipped entirely; it is now summed up
+  from the consumption.
+- **Totals stay correct.** An hour with 0 kWh could add a spike of roughly the
+  whole meter reading, and the repeated hour at the end of daylight saving time
+  was lost.
+- **Missing meter readings no longer break the integration.** The update used to
+  crash with `KeyError: 'MR'` and every sensor went `unavailable`.
+- **Energy costs** from a price entity, see [Energy costs](#energy-costs).
+- **Login and connection problems are visible.** A wrong password asks you to
+  re-authenticate, and a failing API shows up as a failed update instead of
+  silently keeping old data.
+- **Works with Home Assistant 2026.11 and later**, without blocking calls in
+  the event loop, and the same account can't be added twice.
+- **The API client is maintained here.** The `stromnetzgraz` package hasn't
+  changed since 2023; its copy in this integration queries the right time
+  windows (the API expects Vienna time) and no longer fails with HTTP 400 when
+  a query starts at the meter's first reading.
 
 ## Requirements
 
@@ -107,6 +114,9 @@ the field stops new costs from being calculated, but costs already stored stay.
   values for this source.
 - **Enabling IME later:** delete the integration and add it again, so the
   history is imported at 15-minute resolution.
+- **Estimated values are skipped.** Only quarter-hours that Stromnetz Graz
+  marks as measured are imported. Estimated ones (for example around the
+  daylight saving time change) leave a small gap.
 
 ## Troubleshooting
 
@@ -116,6 +126,8 @@ the field stops new costs from being calculated, but costs already stored stay.
 | A day is missing in the energy dashboard | Check the web portal. If the day is missing there too, Stromnetz Graz has no data for it yet. They usually deliver it later, and the next import fills the gap. |
 | `sensor.*_meter_reading_*` is `unknown` | Stromnetz Graz sent no meter reading for the last 30 days. Consumption is still imported. |
 | `Platform stromnetzgraz does not generate unique IDs` | The same account was added twice. Delete one of the two entries. |
+| Totals too low, hours with negative consumption, or sudden jumps | Imported by a version before 0.1.18. Update, then delete `stromnetzgraz:energy_consumption_<meter id>` and `stromnetzgraz:energy_cost_<meter id>` in the *Statistics* tab of the developer tools and restart Home Assistant to re-import them. |
+| `Error fetching data` or *Failed to set up* | The Stromnetz Graz portal is unreachable or answered with an error (the log line includes it). Home Assistant retries on its own. |
 
 When you open an issue, include the log lines that mention `stromnetzgraz`,
 with your e-mail address and meter IDs redacted. Use the
