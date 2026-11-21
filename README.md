@@ -64,7 +64,7 @@ restart Home Assistant.
 Go to **Settings → Devices & services → Add integration → Stromnetz Graz** and
 enter your web portal e-mail and password.
 
-Then add the statistic `stromnetzgraz:energy_consumption:<meter id>` to the
+Then add the statistic `stromnetzgraz:energy_consumption_<meter id>` to the
 **energy dashboard** under *Electricity grid → Grid consumption*. If you have
 several meters (for example a separate one for a hot-water boiler), add each of
 them.

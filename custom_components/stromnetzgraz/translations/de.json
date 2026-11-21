@@ -1,18 +1,27 @@
 {
     "config": {
         "abort": {
-            "already_configured": "Gerät ist bereits konfiguriert"
+            "already_configured": "Gerät ist bereits konfiguriert",
+            "reauth_successful": "Erneute Anmeldung erfolgreich"
         },
         "error": {
             "cannot_connect": "Verbindungsfehler",
             "invalid_login": "Ungültige Anmeldedaten",
-            "unknown": "Unerwarteter Fehler"
+            "unknown": "Unerwarteter Fehler",
+            "timeout": "Zeitüberschreitung beim Verbindungsaufbau"
         },
         "step": {
             "user": {
                 "data": {
                     "password": "Passwort",
                     "username": "Benutzername"
+                }
+            },
+            "reauth_confirm": {
+                "title": "Erneut anmelden",
+                "description": "Die Anmeldung für {username} wurde abgelehnt. Gib das aktuelle Passwort ein.",
+                "data": {
+                    "password": "Passwort"
                 }
             }
         }

@@ -6,15 +6,24 @@
           "username": "[%key:common::config_flow::data::username%]",
           "password": "[%key:common::config_flow::data::password%]"
         }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate",
+        "description": "The login for {username} was rejected. Enter the current password.",
+        "data": {
+          "password": "[%key:common::config_flow::data::password%]"
+        }
       }
     },
     "error": {
       "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]",
       "invalid_login": "[%key:common::config_flow::error::invalid_login%]",
-      "unknown": "[%key:common::config_flow::error::unknown%]"
+      "unknown": "[%key:common::config_flow::error::unknown%]",
+      "timeout": "[%key:common::config_flow::error::timeout_connect%]"
     },
     "abort": {
-      "already_configured": "[%key:common::config_flow::abort::already_configured_device%]"
+      "already_configured": "[%key:common::config_flow::abort::already_configured_device%]",
+      "reauth_successful": "[%key:common::config_flow::abort::reauth_successful%]"
     }
   },
   "options": {

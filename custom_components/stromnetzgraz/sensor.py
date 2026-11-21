@@ -1,18 +1,13 @@
 """Support for StromNetz Graz sensors."""
 from __future__ import annotations
 
-import asyncio
 from datetime import timedelta, datetime
 from functools import partial
 import logging
 import pandas
-import numpy
-
-import aiohttp
 
 from homeassistant.components.recorder import get_instance, history
 from homeassistant.components.recorder.models import (
-    StatisticData,
     StatisticMeanType,
     StatisticMetaData,
 )
@@ -27,13 +22,11 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     UnitOfEnergy,
     CONF_BASE,
 )
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import PlatformNotReady
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import (
@@ -43,14 +36,13 @@ from homeassistant.helpers.update_coordinator import (
 from homeassistant.util.unit_conversion import EnergyConverter
 
 from sngraz import SNGrazMeter, SNGrazInstallation
+from . import SNGrazConfigEntry
 from .const import DOMAIN
 from .cost import add_cost, price_factor
+from .stats import build_cost_statistics, build_statistics, hourly_frame
 
 _LOGGER = logging.getLogger(__name__)
 
-ICON = "mdi:lightning-bolt-circle"
-SCAN_INTERVAL = timedelta(hours=6)
-MIN_TIME_BETWEEN_UPDATES = timedelta(hours=6)
 PARALLEL_UPDATES = 0
 
 
@@ -74,62 +66,26 @@ SENSORS: tuple[SensorEntityDescription, ...] = (
 
 
 async def async_setup_entry(
-    hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
+    hass: HomeAssistant, entry: SNGrazConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    """Set up the StromNetz Graz sensor."""
-
-    conn = hass.data[DOMAIN]
-
+    """Set up the StromNetz Graz sensor; installations and meters are fetched in __init__."""
     entities: list[SNGrazSensor] = []
-
-    base_readings = entry.data.get(CONF_BASE)
-    if not base_readings:
-        base_readings = {}
-
-    # This fills in all installations and meters
-    try:
-        await conn.update_info()
-    except asyncio.TimeoutError as err:
-        _LOGGER.error("Timeout connecting to API: %s ", err)
-        raise PlatformNotReady() from err
-    except aiohttp.ClientError as err:
-        _LOGGER.error("Error connecting to API: %s ", err)
-        raise PlatformNotReady() from err
-
-    for installation in conn.get_installations():
-        _LOGGER.debug(f"Got installation {installation._installation_id}")
-        coordinator: SNGrazDataCoordinator | None = None
-
+    for installation in entry.runtime_data.get_installations():
+        _LOGGER.debug("Got installation %s", installation._installation_id)
+        coordinator = SNGrazDataCoordinator(hass, entry, installation)
         for meter in installation.get_meters():
-            _LOGGER.debug(f"Got meter {meter.id}")
-            # sngraz rounds readingsAvailableSince down to the hour, but the API rejects
-            # (HTTP 400) any fromDate before it; round up to the next hour instead.
-            if (first := await meter._get_first_reading_date()) is not None:
-                meter._first_reading_date = first.replace(second=0) + timedelta(hours=1)
+            _LOGGER.debug("Got meter %s", meter.id)
+            entities.extend(
+                SNGrazSensor(meter, installation, coordinator, description)
+                for description in SENSORS
+            )
+        # Not awaited: the first run can import five years of history. Not via
+        # update_before_add either, which refreshes once per entity (debounced to two).
+        entry.async_create_background_task(
+            hass, coordinator.async_refresh(), f"{DOMAIN} first refresh"
+        )
 
-            if str(meter.id) not in base_readings:
-                # Fails when the API sends no meter reading (MR); retried on the next setup.
-                if (base_reading := await meter.get_first_reading()) is None:
-                    _LOGGER.warning(
-                        "could not get first reading for %s, summing consumption instead",
-                        meter.id,
-                    )
-                else:
-                    base_readings[str(meter.id)] = base_reading
-
-                    data = {**entry.data, CONF_BASE: base_readings}
-                    hass.config_entries.async_update_entry(entry, data=data)
-
-            if coordinator is None:
-                _LOGGER.debug(f"creating new coordinator")
-                coordinator = SNGrazDataCoordinator(hass, installation)
-            for entity_description in SENSORS:
-                _LOGGER.debug(f"adding entity")
-                entities.append(
-                    SNGrazSensor(meter, installation, coordinator, entity_description)
-                )
-
-    async_add_entities(entities, True)
+    async_add_entities(entities)
 
 
 class SNGrazSensor(SensorEntity, CoordinatorEntity["SNGrazDataCoordinator"]):
@@ -171,11 +127,17 @@ class SNGrazSensor(SensorEntity, CoordinatorEntity["SNGrazDataCoordinator"]):
 class SNGrazDataCoordinator(DataUpdateCoordinator):
     """Handle Stromnetz Graz data and insert statistics."""
 
-    def __init__(self, hass, installation: SNGrazInstallation):
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        entry: SNGrazConfigEntry,
+        installation: SNGrazInstallation,
+    ):
         """Initialize the data handler."""
         super().__init__(
             hass,
             _LOGGER,
+            config_entry=entry,
             name="Stromnetz Graz Sensor",
             update_interval=timedelta(hours=1),
         )
@@ -188,153 +150,102 @@ class SNGrazDataCoordinator(DataUpdateCoordinator):
 
     async def _insert_statistics(self):
         """Insert statistics."""
-        base_readings = self.config_entry.data.get(CONF_BASE)
-        if not base_readings:
-            base_readings = {}
+        base_readings = self.config_entry.data.get(CONF_BASE) or {}
 
         for meter in self._installation.get_meters():
-            if not meter._data:
-                continue
-
-            base_reading = 0
-            if str(meter.id) in base_readings:
-                base_reading = base_readings.get(str(meter.id))
-
-            _LOGGER.info(f"adding historical statistics for {meter._short_name}")
-            statistic_id = f"{DOMAIN}:energy_consumption_{meter.id}"
-
-            last_stats = await get_instance(self.hass).async_add_executor_job(
-                get_last_statistics,
-                self.hass,
-                1,
-                statistic_id,
-                True,
-                set(),
-            )
-            if not last_stats:
-                # First time we insert 5 years of data (if available)
-                _LOGGER.info(
-                    f"first time for {meter._short_name}, trying to get up to five years"
-                )
-                _data = await meter.get_historic_data(5 * 365)
-            else:
-                # We update the statistics with the last 30 days of data to handle corrections in the data.
-                _data = meter._data
-            if not _data:
-                continue
-
-            # HA statistics finest interval is hourly, so let's break it down by hour
-            # Also, do some filtering afterwards, pandas otherwise creates "empty" rows
-            df = pandas.DataFrame(_data)
-            # The binning to full hours will attribute readings at full hours e.g. 9:00 to the bin of 9:00-10:00
-            # However the consumption actually belongs to the 8:00-9:00 bin.
-            # Strictly speaking, the same applies for any binning and reading interval
-            df["readTime"] = df["readTime"] - timedelta(seconds=1)
-            if price_entity := self.config_entry.options.get(str(meter.id)):
-                df = add_cost(
-                    df,
-                    await self._fetch_prices(
-                        price_entity, df["readTime"].min(), df["readTime"].max()
-                    ),
-                )
-            df_hour = (
-                df.groupby(pandas.Grouper(freq="h", key="readTime"))
-                .agg(
-                    {
-                        "CONSUMP": lambda x: numpy.nan if len(x) == 0 else sum(x),
-                        # the API sometimes returns no meter readings at all (e.g. after a missing day)
-                        **({"MR": lambda x: numpy.nan if len(x) == 0 else max(x)} if "MR" in df else {}),
-                        **({"COST": lambda x: x.sum(min_count=1)} if "COST" in df else {}),
-                    }
-                )
-                .dropna(how="all")
-            )
-            df_dict = df_hour.to_dict(orient="index")
-
-            start = list(df_dict.keys())[0].to_pydatetime() - timedelta(hours=1)
-            stat = await get_instance(self.hass).async_add_executor_job(
-                statistics_during_period,
-                self.hass,
-                start,
-                None,
-                [statistic_id],
-                "hour",
-                None,
-                {"sum"},
-            )
-            if stat:
-                _sum = stat[statistic_id][0]["sum"]
-                last_stats_time = stat[statistic_id][0]["start"]
-                if isinstance(last_stats_time, float):
-                    last_stats_time = datetime.fromtimestamp(
-                        stat[statistic_id][0]["start"]
-                    )
-                else:
-                    last_stats_time = last_stats_time.replace(tzinfo=None)
-            else:
-                _sum = 0.0
-                last_stats_time = None
-
-            statistics = []
-            last_reading = _sum
-            for start, data in df_dict.items():
-                consump = data.get("CONSUMP")
-                mr = data.get("MR")
-                if not mr or mr != mr:  # x != x is a NaN check.
-                    mr = None  # e.g. new meters report consumption without meter readings
-
-                if not consump or consump != consump:
-                    if (
-                        mr is None or base_reading == 0
-                    ):  # sum is too unreliable if we don't have base_reading
-                        continue
-                    consump = mr - last_reading
-                    last_reading = mr
-
-                # make sure minutes & (micro)seconds is 0, or HA will throw an error
-                start = start.to_pydatetime().replace(minute=0, second=0, microsecond=0)
-                if (
-                    last_stats_time is not None
-                    and start.replace(tzinfo=None) <= last_stats_time
-                ):
-                    continue
-
-                _sum += consump
-                new_stat = StatisticData(
-                    start=start,
-                    state=consump,
-                    sum=_sum,
+            if meter._data:
+                # None: no base reading known, statistics sum the consumption instead.
+                await self._insert_meter_statistics(
+                    meter, base_readings.get(str(meter.id))
                 )
 
-                if base_reading != 0 and mr is not None:
-                    new_stat["sum"] = mr - base_reading
+    async def _last_statistic(
+        self, statistic_id: str, since: datetime
+    ) -> tuple[float, float | None]:
+        """Sum and start (POSIX timestamp) of the first stored statistic from `since` on.
 
-                statistics.append(new_stat)
+        The whole fetched window is then re-summed from it, picking up corrections.
+        """
+        stat = await get_instance(self.hass).async_add_executor_job(
+            statistics_during_period,
+            self.hass,
+            since,
+            None,
+            [statistic_id],
+            "hour",
+            None,
+            {"sum"},
+        )
+        if not stat:
+            return 0.0, None
+        row = stat[statistic_id][0]
+        start = row["start"]
+        if isinstance(start, datetime):
+            start = start.timestamp()
+        return row["sum"], start
 
-            # metadata = StatisticMetaData(
-            #    has_mean=False,
-            #    has_sum=sensor.get("has_sum"),
-            #    name=f"{meter._short_name} {s}",
-            #    source="recorder",
-            #    state_unit_of_measurement=sensor.get("unit"),
-            #    statistic_id=statistic_id,
-            #    unit_of_measurement=sensor.get("unit"),
-            # )
-            metadata = StatisticMetaData(
-                mean_type=StatisticMeanType.NONE,
-                has_sum=True,
-                name=f"{meter._short_name} Consumption",
-                source=DOMAIN,
-                statistic_id=statistic_id,
-                unit_class=EnergyConverter.UNIT_CLASS,
-                unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+    async def _insert_meter_statistics(
+        self, meter: SNGrazMeter, base_reading: float | None
+    ) -> None:
+        """Insert the consumption (and, with a price entity, cost) statistics of one meter."""
+        _LOGGER.info("adding historical statistics for %s", meter._short_name)
+        statistic_id = f"{DOMAIN}:energy_consumption_{meter.id}"
+
+        last_stats = await get_instance(self.hass).async_add_executor_job(
+            get_last_statistics,
+            self.hass,
+            1,
+            statistic_id,
+            True,
+            set(),
+        )
+        if not last_stats:
+            # First time we insert 5 years of data (if available)
+            _LOGGER.info(
+                "first time for %s, trying to get up to five years", meter._short_name
             )
-            _LOGGER.info(f"adding {len(statistics)} entries to {statistic_id}")
-            # async_import_statistics(self.hass, metadata, statistics)
-            async_add_external_statistics(self.hass, metadata, statistics)
+            _data = await meter.get_historic_data(5 * 365)
+        else:
+            # We update the statistics with the last 30 days of data to handle corrections in the data.
+            _data = meter._data
+        if not _data:
+            return
 
-            if "COST" in df_hour:
-                await self._insert_cost_statistics(meter, df_hour["COST"].dropna())
+        df = pandas.DataFrame(_data)
+        # The binning to full hours will attribute readings at full hours e.g. 9:00 to the bin of 9:00-10:00
+        # However the consumption actually belongs to the 8:00-9:00 bin.
+        # Strictly speaking, the same applies for any binning and reading interval
+        df["readTime"] = df["readTime"] - timedelta(seconds=1)
+        if price_entity := self.config_entry.options.get(str(meter.id)):
+            df = add_cost(
+                df,
+                await self._fetch_prices(
+                    price_entity, df["readTime"].min(), df["readTime"].max()
+                ),
+            )
+        df_hour = hourly_frame(df)
+        if df_hour.empty:
+            return
+
+        last_sum, last_start = await self._last_statistic(
+            statistic_id, df_hour.index[0].to_pydatetime() - timedelta(hours=1)
+        )
+        statistics = build_statistics(df_hour, base_reading, last_sum, last_start)
+
+        metadata = StatisticMetaData(
+            mean_type=StatisticMeanType.NONE,
+            has_sum=True,
+            name=f"{meter._short_name} Consumption",
+            source=DOMAIN,
+            statistic_id=statistic_id,
+            unit_class=EnergyConverter.UNIT_CLASS,
+            unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        )
+        _LOGGER.info("adding %d entries to %s", len(statistics), statistic_id)
+        async_add_external_statistics(self.hass, metadata, statistics)
+
+        if "COST" in df_hour:
+            await self._insert_cost_statistics(meter, df_hour["COST"].dropna())
 
     async def _fetch_prices(
         self, entity_id: str, start: pandas.Timestamp, end: pandas.Timestamp
@@ -371,30 +282,10 @@ class SNGrazDataCoordinator(DataUpdateCoordinator):
             return
         statistic_id = f"{DOMAIN}:energy_cost_{meter.id}"
 
-        stat = await get_instance(self.hass).async_add_executor_job(
-            statistics_during_period,
-            self.hass,
-            costs.index[0].to_pydatetime() - timedelta(hours=1),
-            None,
-            [statistic_id],
-            "hour",
-            None,
-            {"sum"},
+        last_sum, last_start = await self._last_statistic(
+            statistic_id, costs.index[0].to_pydatetime() - timedelta(hours=1)
         )
-        _sum, last_start = 0.0, None
-        if stat:
-            _sum = stat[statistic_id][0]["sum"]
-            last_start = stat[statistic_id][0]["start"]
-            if isinstance(last_start, datetime):
-                last_start = last_start.timestamp()
-
-        statistics = []
-        for start, cost in costs.items():
-            start = start.to_pydatetime().replace(minute=0, second=0, microsecond=0)
-            if last_start is not None and start.timestamp() <= last_start:
-                continue
-            _sum += cost
-            statistics.append(StatisticData(start=start, state=cost, sum=_sum))
+        statistics = build_cost_statistics(costs, last_sum, last_start)
 
         metadata = StatisticMetaData(
             mean_type=StatisticMeanType.NONE,
@@ -405,5 +296,5 @@ class SNGrazDataCoordinator(DataUpdateCoordinator):
             unit_class=None,
             unit_of_measurement=self.hass.config.currency,
         )
-        _LOGGER.info(f"adding {len(statistics)} entries to {statistic_id}")
+        _LOGGER.info("adding %d entries to %s", len(statistics), statistic_id)
         async_add_external_statistics(self.hass, metadata, statistics)
