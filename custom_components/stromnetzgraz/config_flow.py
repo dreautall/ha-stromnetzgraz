@@ -24,7 +24,6 @@ from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
-# TODO adjust the data schema to the data that you need
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_USERNAME): str,
@@ -65,7 +64,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
         sn = await async_create_api(self.hass, username, password)
         try:
-            await sn.authenticate()
+            # sngraz returns False (instead of raising) when the login request fails.
+            if not await sn.authenticate():
+                errors["base"] = "cannot_connect"
         except asyncio.TimeoutError:
             errors["base"] = "timeout"
         except aiohttp.ClientError:

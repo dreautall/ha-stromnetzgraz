@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import timedelta
 import logging
 import os
 import ssl
@@ -12,6 +13,7 @@ from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.const import (
+    CONF_BASE,
     CONF_USERNAME,
     CONF_PASSWORD,
 )
@@ -51,7 +53,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: SNGrazConfigEntry) -> bo
     )
 
     try:
-        await conn.authenticate()
+        # sngraz returns False (instead of raising) when the login request fails.
+        if not await conn.authenticate():
+            raise ConfigEntryNotReady("Login request failed")
+        # This fills in all installations and meters.
+        await conn.update_info()
+        if not conn.get_installations():
+            raise ConfigEntryNotReady("No installations returned")
+        await _async_prepare_meters(hass, entry, conn)
     except InvalidLogin as err:
         await conn.close_connection()
         raise ConfigEntryAuthFailed(f"Invalid login: {err}") from err
@@ -69,9 +78,36 @@ async def async_setup_entry(hass: HomeAssistant, entry: SNGrazConfigEntry) -> bo
     return True
 
 
-async def async_update_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Update options."""
-    await hass.config_entries.async_reload(entry.entry_id)
+async def _async_prepare_meters(
+    hass: HomeAssistant, entry: SNGrazConfigEntry, conn: StromNetzGraz
+) -> None:
+    """Fix each meter's first reading date and store base readings that are missing."""
+    # Copy: mutating the stored dict in place would hide the change from async_update_entry.
+    base_readings = dict(entry.data.get(CONF_BASE) or {})
+    changed = False
+    for installation in conn.get_installations():
+        for meter in installation.get_meters():
+            # sngraz rounds readingsAvailableSince down to the hour, but the API rejects
+            # (HTTP 400) any fromDate before it; round up to the next hour instead.
+            if (first := await meter._get_first_reading_date()) is not None:
+                meter._first_reading_date = first.replace(second=0) + timedelta(hours=1)
+
+            if str(meter.id) in base_readings:
+                continue
+            # Fails when the API sends no meter reading (MR); retried on the next setup.
+            if (base_reading := await meter.get_first_reading()) is None:
+                _LOGGER.warning(
+                    "could not get first reading for %s, summing consumption instead",
+                    meter.id,
+                )
+                continue
+            base_readings[str(meter.id)] = base_reading
+            changed = True
+
+    if changed:
+        hass.config_entries.async_update_entry(
+            entry, data={**entry.data, CONF_BASE: base_readings}
+        )
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: SNGrazConfigEntry) -> bool:
