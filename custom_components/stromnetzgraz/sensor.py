@@ -103,13 +103,17 @@ async def async_setup_entry(
         for meter in installation.get_meters():
             _LOGGER.debug(f"Got meter {meter.id}")
             if str(meter.id) not in base_readings:
+                # sngraz's first-reading query can fail (seen: HTTP 400); retried on the next setup.
                 if (base_reading := await meter.get_first_reading()) is None:
-                    _LOGGER.error("could not get first reading")
-                    continue
-                base_readings[str(meter.id)] = base_reading
+                    _LOGGER.warning(
+                        "could not get first reading for %s, summing consumption instead",
+                        meter.id,
+                    )
+                else:
+                    base_readings[str(meter.id)] = base_reading
 
-                data = {**entry.data, CONF_BASE: base_readings}
-                hass.config_entries.async_update_entry(entry, data=data)
+                    data = {**entry.data, CONF_BASE: base_readings}
+                    hass.config_entries.async_update_entry(entry, data=data)
 
             if coordinator is None:
                 _LOGGER.debug(f"creating new coordinator")
@@ -267,17 +271,14 @@ class SNGrazDataCoordinator(DataUpdateCoordinator):
             statistics = []
             last_reading = _sum
             for start, data in df_dict.items():
-                if "CONSUMP" not in data or "MR" not in data:
-                    continue
-
-                consump = data["CONSUMP"]
-                mr = data["MR"]
+                consump = data.get("CONSUMP")
+                mr = data.get("MR")
                 if not mr or mr != mr:  # x != x is a NaN check.
-                    continue
+                    mr = None  # e.g. new meters report consumption without meter readings
 
                 if not consump or consump != consump:
                     if (
-                        base_reading == 0
+                        mr is None or base_reading == 0
                     ):  # sum is too unreliable if we don't have base_reading
                         continue
                     consump = mr - last_reading
@@ -298,7 +299,7 @@ class SNGrazDataCoordinator(DataUpdateCoordinator):
                     sum=_sum,
                 )
 
-                if base_reading != 0:
+                if base_reading != 0 and mr is not None:
                     new_stat["sum"] = mr - base_reading
 
                 statistics.append(new_stat)
