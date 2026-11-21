@@ -7,14 +7,14 @@ small and upstream-friendly.
 ## Layout
 
 - `custom_components/stromnetzgraz/`: the integration (`__init__.py`,
-  `config_flow.py`, `sensor.py`, `cost.py`, `const.py`).
+  `config_flow.py`, `sensor.py`, `cost.py`, `stats.py`, `const.py`).
 - `manifest.json`: version, HA dependencies, and pinned Python requirements
   (`stromnetzgraz` client library, `pandas`).
 - `strings.json` + `translations/{de,en}.json`: UI text.
 
 ## Checks
 
-`tests/` only covers the pure-pandas helpers in `cost.py`
+`tests/` only covers the pure-pandas helpers in `cost.py` and `stats.py`
 (`uvx --with pandas pytest tests/`); everything else needs a Home Assistant
 instance. CI runs the `pytest`, `hacs` and `hassfest` jobs on every PR; `hacs` and `hassfest` are required checks (ruleset managed in `mainman94/homelab`,
 `terraform/github`). Renaming a job silently breaks the ruleset — change both together.

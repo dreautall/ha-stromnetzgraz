@@ -125,7 +125,7 @@ class OptionsFlowHandler(config_entries.OptionsFlowWithReload):
 
         meters = [
             meter
-            for installation in self.hass.data[DOMAIN].get_installations()
+            for installation in self.config_entry.runtime_data.get_installations()
             for meter in installation.get_meters()
         ]
         price_selector = selector.EntitySelector(
