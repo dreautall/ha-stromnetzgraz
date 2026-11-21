@@ -1,6 +1,5 @@
 """Run with: uvx --with pandas pytest tests/"""
 import importlib.util
-import math
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -55,12 +54,13 @@ def test_cost_uses_price_valid_at_each_reading():
     assert out["COST"].tolist() == pytest.approx([0.10, 0.20, 0.60, 0.80])
 
 
-def test_readings_before_first_price_get_no_cost():
-    df = _readings(1.0, 2.0)
-    out = cost.add_cost(df, [(T0 + timedelta(minutes=20), 0.30)])
+def test_readings_before_first_price_use_latest_price():
+    df = _readings(1.0, 2.0, 3.0)
+    prices = [(T0 + timedelta(minutes=20), 0.30), (T0 + timedelta(minutes=40), 0.50)]
 
-    assert math.isnan(out["COST"][0])
-    assert out["COST"][1] == pytest.approx(0.60)
+    out = cost.add_cost(df, prices)
+
+    assert out["COST"].tolist() == pytest.approx([0.50, 0.60, 1.50])
 
 
 def test_no_prices_leaves_frame_untouched():

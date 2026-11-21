@@ -89,10 +89,11 @@ Each quarter-hour reading is multiplied by the price that was valid at that
 time, so 15-minute and hourly spot prices both work. The cost is in your Home
 Assistant currency.
 
-Costs only go back as far as Home Assistant has kept the price entity's
-history (the recorder keeps 10 days by default). Readings from before that get
-no cost. Clearing the field stops new costs from being calculated, but costs
-already stored stay.
+Readings from before the price entity's history (the recorder keeps 10 days by
+default) use its latest price, which is exact for a fixed tariff. Costs are
+calculated for new readings only; to recalculate older ones, delete both
+`stromnetzgraz:energy_*_<meter id>` statistics and restart Home Assistant. Clearing
+the field stops new costs from being calculated, but costs already stored stay.
 
 ## Limitations
 
