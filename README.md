@@ -101,8 +101,9 @@ time, so 15-minute and hourly spot prices both work. The cost is in your Home
 Assistant currency.
 
 Readings from before the price entity's history (the recorder keeps 10 days by
-default) use its latest price, which is exact for a fixed tariff. Costs are
-calculated for new readings only; to recalculate older ones, delete both
+default) use its oldest known price, which is exact for a fixed tariff. Stored
+costs are only recalculated as far back as that history reaches; to recalculate
+older ones, delete both
 `stromnetzgraz:energy_*_<meter id>` statistics and restart Home Assistant. Clearing
 the field stops new costs from being calculated, but costs already stored stay.
 

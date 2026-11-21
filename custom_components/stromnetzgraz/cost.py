@@ -18,8 +18,8 @@ def add_cost(
 ) -> pandas.DataFrame:
     """Add a COST column: each reading's CONSUMP times the price valid at its readTime.
 
-    `prices` are (time the price took effect, <currency>/kWh). Readings before the
-    first known price use the latest known price, so a fixed tariff covers all history.
+    `prices` are (time the price took effect, <currency>/kWh), oldest first. Readings
+    before the first known price use the oldest one, so a fixed tariff covers all history.
     """
     if not prices or "CONSUMP" not in df:
         return df
@@ -33,5 +33,5 @@ def add_cost(
         on="readTime",
         direction="backward",
     )
-    merged["COST"] = merged["CONSUMP"] * merged["price"].fillna(prices[-1][1])
+    merged["COST"] = merged["CONSUMP"] * merged["price"].fillna(prices[0][1])
     return merged.drop(columns="price")

@@ -1,8 +1,12 @@
 """Run with: uvx --with pandas --with aiohttp --with pyjwt pytest tests/"""
+import asyncio
 import importlib.util
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
 
 # Load the vendored client on its own: importing the integration would pull in Home Assistant.
 _pkg = Path(__file__).parents[1] / "custom_components/stromnetzgraz/sngraz"
@@ -42,3 +46,39 @@ def test_reading_values_skips_missing_values_and_other_scales():
         _value("MR", 42.0),
     ]}
     assert sngraz.reading_values(reading) == {"MR": 42.0}
+
+
+class _FakeSN:
+    """Stands in for StromNetzGraz: answers query() from a dict per API path."""
+
+    def __init__(self, answers):
+        self.answers = answers
+
+    async def query(self, path, payload=None):
+        return self.answers[path]
+
+
+def test_fetch_data_parses_utc_times_and_keeps_newest_values():
+    sn = _FakeSN({
+        "getMeterReadingMetaData": {"readingsAvailableSince": "2026-08-31T14:30:30"},
+        "getMeterReading": {"readings": [  # newest first: the order must not matter
+            {"readTime": "2026-11-20T10:15:00Z", "readingValues": [_value("CONSUMP", 0.2), _value("MR", 101.0)]},
+            {"readTime": "2026-11-20T10:00:00Z", "readingValues": [_value("CONSUMP", 0.1), _value("MR", 100.0)]},
+        ]},
+    })
+    meter = sngraz.SNGrazMeter("m1", SimpleNamespace(_sn=sn), {"optState": {"currentOptState": "OptIn"}})
+    end = datetime(2026, 11, 21, tzinfo=timezone.utc)
+    rows = asyncio.run(meter._fetch_data(end - timedelta(days=1), end))
+    assert rows[0]["readTime"] == datetime(2026, 11, 20, 10, 15, tzinfo=timezone.utc)
+    assert (meter.lastMeterReading, meter.lastMeterConsumption) == (101.0, 0.2)
+
+
+def test_login_without_token_is_a_retryable_api_error():
+    sn = sngraz.StromNetzGraz("user", "pw", websession=object())
+
+    async def no_token(path, payload=None, retry=2):
+        return {"success": False}
+
+    sn._query = no_token
+    with pytest.raises(sngraz.SNGrazError):
+        asyncio.run(sn.authenticate())

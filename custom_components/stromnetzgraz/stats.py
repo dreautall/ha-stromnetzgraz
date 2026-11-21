@@ -36,6 +36,12 @@ def _value(x: Any) -> float | None:
     return None if x is None or x != x else x  # x != x is a NaN check.
 
 
+def backfill_days(last_start: float, now: float) -> int | None:
+    """Days to fetch to reach back to the last stored hour; None while the 30-day window does."""
+    days = (now - last_start) / 86400
+    return math.ceil(days) + 1 if days > 29 else None
+
+
 def build_statistics(
     df_hour: pandas.DataFrame,
     base_reading: float | None,

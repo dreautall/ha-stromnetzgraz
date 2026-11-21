@@ -27,6 +27,9 @@
         }
     },
     "options": {
+        "abort": {
+            "not_loaded": "Stromnetz Graz is not set up yet. Try again once it has connected to the web portal."
+        },
         "step": {
             "init": {
                 "title": "Energy prices",

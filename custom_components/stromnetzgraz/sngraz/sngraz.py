@@ -1,15 +1,11 @@
 import asyncio
-import os
 from typing import Optional
 import datetime as dt
 import zoneinfo
 import json
 import logging
-import ssl
 import aiohttp
 import jwt
-
-from . import __version__
 
 API_ENDPOINT = "https://webportal.stromnetz-graz.at/api/"
 # The API reads every date as Vienna wall-clock time and ignores any UTC offset.
@@ -23,43 +19,21 @@ class StromNetzGraz:
         self,
         username: str,
         password: str,
+        websession: aiohttp.ClientSession,
         timeout: int = DEFAULT_TIMEOUT,
-        websession: Optional[aiohttp.ClientSession] = None,
-        time_zone: Optional[dt.tzinfo] = None,
     ) -> None:
         """Initialize Stromnetz Graz API access
 
         :param username: The username (usually email) to access the Stromnetz Graz API with.
         :param password: The password to access the Stromnetz Graz API with.
-        :param websession: The websession to use when communicating with the API.
-        :param time_zone: The time zone to display times in and to use.
+        :param websession: The session to send requests with; it sets TLS certificates and User-Agent.
         """
-        if websession is None:
-            sslcontext = ssl.create_default_context()
-            sslcontext.load_verify_locations(
-                cafile=os.path.join(os.path.dirname(__file__), "certchain.crt")
-            )
-            conn = aiohttp.TCPConnector(ssl=sslcontext)
-            self.websession = aiohttp.ClientSession(
-                headers={aiohttp.hdrs.USER_AGENT: f"pySNGraz/{__version__}"},
-                connector=conn,
-            )
-        else:
-            self.websession = websession
-
+        self.websession = websession
         self._timeout: int = timeout
         self._username: str = username
         self._password: str = password
-        self.time_zone: dt.tzinfo = time_zone or zoneinfo.ZoneInfo("UTC")
         self._installations: dict[int, SNGrazInstallation] = {}
         self._jwt: Optional[str] = None
-        try:
-            user_agent = self.websession._default_headers.get(
-                aiohttp.hdrs.USER_AGENT, ""
-            )  # will be fixed by aiohttp 4.0
-        except Exception:  # pylint: disable=broad-except
-            user_agent = ""
-        self.user_agent = f"{user_agent} pySNGraz/{__version__}"
 
     async def close_connection(self) -> None:
         """Close the API connection.
@@ -75,9 +49,7 @@ class StromNetzGraz:
         """
         if not self.ok:
             await self.authenticate()
-        if (res := await self._query(path, payload)) is None:
-            return None
-        return res
+        return await self._query(path, payload)
 
     async def _query(
         self, path: str, payload: dict = [], retry: int = 2
@@ -90,7 +62,6 @@ class StromNetzGraz:
 
         post_args = {
             "headers": {
-                aiohttp.hdrs.USER_AGENT: self.user_agent,
                 aiohttp.hdrs.CONTENT_TYPE: "application/json; charset=utf-8",
             },
             "data": json.dumps(payload),
@@ -149,12 +120,12 @@ class StromNetzGraz:
         if "error" in resp and resp.get("error") != "":
             raise InvalidLogin(resp.get("error"))
         if ("success" in resp and not resp.get("success")) or not resp.get("token"):
-            raise ValueError("no token returned")
+            raise SNGrazError("login: no token returned", 200)
 
         self._jwt = resp.get("token")
 
         if not self.ok:
-            raise Exception("login failed")
+            raise SNGrazError("login: the token is already expired", 200)
 
         return True
 
@@ -171,31 +142,9 @@ class StromNetzGraz:
             )
 
     # Helper Funcs
-    def get_installation_ids(self) -> list[int]:
-        """Return list of installation ids."""
-        return list(self._installations.keys())
-
     def get_installations(self) -> list["SNGrazInstallation"]:
         """Return list of Installations."""
         return list(self._installations.values())
-
-    def get_installation(self, installation_id: int) -> Optional["SNGrazInstallation"]:
-        """Return an instance of SNGrazInstallation for given installation id."""
-        if installation_id not in self._installations:
-            raise ValueError("Could not find installation id", installation_id)
-        return self._installations[installation_id]
-
-    async def fetch_consumption_data(self, days: int = 30) -> None:
-        """Fetch consumption data for installations."""
-        tasks = []
-        for installation in self.get_installations():
-            tasks.append(installation.fetch_consumption_data(days))
-        await asyncio.gather(*tasks)
-
-    @property
-    def installation_ids(self) -> list[str]:
-        """Return list of installation ids."""
-        return self.get_installation_ids()
 
 
 class SNGrazInstallation:
@@ -211,9 +160,6 @@ class SNGrazInstallation:
         self._sn: StromNetzGraz = sn
         self._installation_id: str = installation_id
         self._customer_id: int = info.get("customerID")
-        self._customer_number: int = info.get("customerNumber")
-        self._installation_number: int = info.get("installationNumber")
-        self._address: str = info.get("address")
         self._meters: dict[int, SNGrazMeter] = {}
 
         for _meter in info.get("meterPoints"):
@@ -222,19 +168,9 @@ class SNGrazInstallation:
             self._meters[meter_id] = SNGrazMeter(meter_id, self, _meter)
 
     # Helper Funcs
-    def get_meter_ids(self) -> list[int]:
-        """Return list of meter ids."""
-        return list(self._meters.keys())
-
     def get_meters(self) -> list["SNGrazMeter"]:
         """Return list of meters."""
         return list(self._meters.values())
-
-    def get_meter(self, meter_id: int) -> Optional["SNGrazMeter"]:
-        """Return an instance of SNGrazMeter for given meter id."""
-        if meter_id not in self._meters:
-            raise ValueError("Could not find meter id", meter_id)
-        return self._meters[meter_id]
 
     async def fetch_consumption_data(self, days: int = 30) -> None:
         """Fetch consumption data for meters."""
@@ -242,11 +178,6 @@ class SNGrazInstallation:
         for meter in self.get_meters():
             tasks.append(meter.fetch_consumption_data(days))
         await asyncio.gather(*tasks)
-
-    @property
-    def meter_ids(self) -> list[str]:
-        """Return list of meter ids."""
-        return self.get_meter_ids()
 
     @property
     def customer_id(self) -> int:
@@ -266,7 +197,6 @@ class SNGrazMeter:
         """
         self._sn_inst: SNGrazInstallation = sn_inst
         self._meter_id: str = meter_id
-        self._name: str = info.get("name")
         self._short_name: str = info.get("shortName")
         self._opt_state: str = info.get("optState").get("currentOptState")
         self._data: Optional[list[dict]] = None
@@ -279,18 +209,9 @@ class SNGrazMeter:
         self._last_reading: Optional[int] = None
 
     async def fetch_consumption_data(self, days: int = 30) -> None:
-        """Update consumption info asynchronously.
-
-        :param days: Days to get data for."""
-        endTime = dt.datetime.now(dt.timezone.utc).replace(
-            microsecond=0, second=0, minute=0
-        )
-        startTime = endTime - dt.timedelta(days=days)
-
-        if (resp := await self._fetch_data(startTime, endTime)) is None:
-            return
-
-        self._data = resp
+        """Fetch the last `days` days and keep them as the meter's current data."""
+        if (resp := await self.get_historic_data(days)) is not None:
+            self._data = resp
 
     async def get_historic_data(self, days: int = 30) -> Optional[list[dict]]:
         """Get historic data.
@@ -378,7 +299,6 @@ class SNGrazMeter:
             if d.endswith("Z"):
                 d = d[:-1] + "+00:00"
             res["readTime"] = dt.datetime.fromisoformat(d)
-            res["readingValues"] = reading.get("readingValues")
 
             # Update last value trackers
             if "CONSUMP" in res and (
@@ -396,32 +316,17 @@ class SNGrazMeter:
         return result
 
     async def get_first_reading(self) -> Optional[int]:
-        if self._first_reading:
+        if self._first_reading is not None:
             return self._first_reading
 
         if (startTime := await self._get_first_reading_date()) is None:
             _LOGGER.warning("no first reading could be found")
             return None
-        endTime = startTime + dt.timedelta(days=7)
-
-        resp = []
-        while len(resp) == 0:
-            if (resp := await self._fetch_data(startTime, endTime)) is None:
-                _LOGGER.warning("no readings available")
-                return None
-
-            startTime += dt.timedelta(days=7)
-            endTime = startTime + dt.timedelta(days=7)
-
-        for res in resp:
-            if "MR" in res:
-                break
-        
-        if "MR" not in res:
-            _LOGGER.debug("first reading does not contain a meter reading value")
-            return None
-
-        self._first_reading = res.get("MR")
+        # Only the first week: without a meter reading there, the meter sums its consumption.
+        resp = await self._fetch_data(startTime, startTime + dt.timedelta(days=7))
+        self._first_reading = next((r["MR"] for r in resp or [] if "MR" in r), None)
+        if self._first_reading is None:
+            _LOGGER.debug("no meter reading in the first week of %s", self.id)
         return self._first_reading
 
     @property

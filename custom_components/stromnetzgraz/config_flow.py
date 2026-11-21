@@ -121,6 +121,9 @@ class OptionsFlowHandler(config_entries.OptionsFlowWithReload):
         """Manage the options."""
         if user_input is not None:
             return self.async_create_entry(data=user_input)
+        # The meters are only known once the entry is set up (runtime_data).
+        if self.config_entry.state is not config_entries.ConfigEntryState.LOADED:
+            return self.async_abort(reason="not_loaded")
 
         meters = [
             meter

@@ -54,13 +54,13 @@ def test_cost_uses_price_valid_at_each_reading():
     assert out["COST"].tolist() == pytest.approx([0.10, 0.20, 0.60, 0.80])
 
 
-def test_readings_before_first_price_use_latest_price():
+def test_readings_before_first_price_use_oldest_price():
     df = _readings(1.0, 2.0, 3.0)
     prices = [(T0 + timedelta(minutes=20), 0.30), (T0 + timedelta(minutes=40), 0.50)]
 
     out = cost.add_cost(df, prices)
 
-    assert out["COST"].tolist() == pytest.approx([0.50, 0.60, 1.50])
+    assert out["COST"].tolist() == pytest.approx([0.30, 0.60, 1.50])
 
 
 def test_no_prices_leaves_frame_untouched():

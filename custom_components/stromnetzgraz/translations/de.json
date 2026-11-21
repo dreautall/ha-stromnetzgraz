@@ -27,6 +27,9 @@
         }
     },
     "options": {
+        "abort": {
+            "not_loaded": "Stromnetz Graz ist noch nicht eingerichtet. Versuche es erneut, sobald die Verbindung zum Webportal steht."
+        },
         "step": {
             "init": {
                 "title": "Strompreise",

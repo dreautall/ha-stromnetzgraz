@@ -142,3 +142,9 @@ def test_consumption_derived_from_consecutive_meter_readings_without_base():
         index=pandas.DatetimeIndex([T0, T0 + timedelta(hours=1)]),
     )
     assert [(r[1], r[2]) for r in build(df_hour, last_sum=10.0)] == [(1.0, 11.0), (3.0, 14.0)]
+
+
+def test_backfill_only_beyond_the_30_day_window():
+    now = T0.timestamp()
+    assert stats.backfill_days(now - 10 * 86400, now) is None
+    assert stats.backfill_days(now - 40.5 * 86400, now) == 42
