@@ -1,4 +1,4 @@
-"""Run with: uvx --with pandas pytest tests/"""
+"""Run with: uvx --with pandas --with aiohttp --with pyjwt pytest tests/"""
 import importlib.util
 from datetime import datetime, timedelta, timezone
 from pathlib import Path

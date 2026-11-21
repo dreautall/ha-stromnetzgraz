@@ -7,12 +7,13 @@ import json
 import logging
 import ssl
 import aiohttp
-import async_timeout
 import jwt
 
 from . import __version__
 
 API_ENDPOINT = "https://webportal.stromnetz-graz.at/api/"
+# The API reads every date as Vienna wall-clock time and ignores any UTC offset.
+API_TZ = zoneinfo.ZoneInfo("Europe/Vienna")
 DEFAULT_TIMEOUT = 10
 _LOGGER = logging.getLogger(__name__)
 
@@ -98,11 +99,11 @@ class StromNetzGraz:
             post_args["headers"][aiohttp.hdrs.AUTHORIZATION] = "Bearer " + self._jwt
 
         try:
-            async with async_timeout.timeout(self._timeout):
+            async with asyncio.timeout(self._timeout):
                 resp = await self.websession.post(API_ENDPOINT + path, **post_args)
             if resp.status != 200:
-                _LOGGER.error("Error connecting to API, response code %d", resp.status)
-                return None
+                body = (await resp.text())[:300]
+                raise SNGrazError(f"{path}: HTTP {resp.status} {body}", resp.status)
 
             result = await resp.json()
         except aiohttp.ClientError as err:
@@ -137,12 +138,14 @@ class StromNetzGraz:
     # API funcs
     async def authenticate(self) -> bool:
         # Use _query to avoid authentication-loop
-        if (
-            resp := await self._query(
+        try:
+            resp = await self._query(
                 "login", {"email": self._username, "password": self._password}
             )
-        ) is None:
-            return False
+        except SNGrazError as err:
+            if err.status in (401, 403):
+                raise InvalidLogin(str(err)) from err
+            raise
         if "error" in resp and resp.get("error") != "":
             raise InvalidLogin(resp.get("error"))
         if ("success" in resp and not resp.get("success")) or not resp.get("token"):
@@ -279,8 +282,8 @@ class SNGrazMeter:
         """Update consumption info asynchronously.
 
         :param days: Days to get data for."""
-        endTime = dt.datetime.utcnow().replace(
-            microsecond=0, second=0, minute=0, tzinfo=self._sn_inst._sn.time_zone
+        endTime = dt.datetime.now(dt.timezone.utc).replace(
+            microsecond=0, second=0, minute=0
         )
         startTime = endTime - dt.timedelta(days=days)
 
@@ -295,8 +298,8 @@ class SNGrazMeter:
         This data will be returned and not saved inside the SNGrazMeter instance.
 
         :param days: Days to get data for."""
-        endTime = dt.datetime.utcnow().replace(
-            microsecond=0, second=0, minute=0, tzinfo=self._sn_inst._sn.time_zone
+        endTime = dt.datetime.now(dt.timezone.utc).replace(
+            microsecond=0, second=0, minute=0
         )
         startTime = endTime - dt.timedelta(days=days)
 
@@ -312,12 +315,12 @@ class SNGrazMeter:
                     "getMeterReadingMetaData", {"meterPointId": self.id}
                 )
             ) is None:
-                _LOGGER.error("Could not get meter meta data: API query failed")
                 return None
-            # note: timezone missing in API reply, let's asume our timezone
+            # The API rejects (HTTP 400) a fromDate before readingsAvailableSince,
+            # compared as wall-clock time to the second, so keep it as is.
             self._first_reading_date = dt.datetime.fromisoformat(
                 resp.get("readingsAvailableSince")
-            ).replace(tzinfo=self._sn_inst._sn.time_zone, minute=0)
+            ).replace(tzinfo=API_TZ)
 
         return self._first_reading_date
 
@@ -332,7 +335,7 @@ class SNGrazMeter:
         # daily data available
         if self._opt_state == "OptMiddle":
             interval = "Daily"
-            endTime = endTime.replace(hour=0, minute=0)
+            endTime = endTime.astimezone(API_TZ).replace(hour=0, minute=0)
         # 15min data available
         elif self._opt_state == "OptIn":
             interval = "QuarterHourly"
@@ -354,15 +357,14 @@ class SNGrazMeter:
             "unitOfConsump": "KWH",
             "interval": interval,
             "meterPointId": self.id,
-            "fromDate": startTime.isoformat(timespec="milliseconds"),
-            "toDate": endTime.isoformat(timespec="milliseconds"),
+            "fromDate": api_time(startTime),
+            "toDate": api_time(endTime),
         }
 
         if (resp := await self._sn_inst._sn.query("getMeterReading", payload)) is None:
-            _LOGGER.error("Could not get meter readings: API query failed")
             return None
         if not resp.get("readings"):
-            _LOGGER.error("Could not get meter readings: empty reading response?")
+            _LOGGER.warning("No readings for meter %s from %s", self.id, payload["fromDate"])
             return None
 
         readings = resp.get("readings")
@@ -443,5 +445,18 @@ class SNGrazMeter:
         return self._last_reading
 
 
+def api_time(time: dt.datetime) -> str:
+    """Format an aware datetime as the Vienna wall-clock time the API expects."""
+    return time.astimezone(API_TZ).replace(tzinfo=None).isoformat(timespec="milliseconds")
+
+
 class InvalidLogin(Exception):
     """Invalid login exception."""
+
+
+class SNGrazError(Exception):
+    """The API answered with an HTTP error; the message includes the response body."""
+
+    def __init__(self, message: str, status: int) -> None:
+        super().__init__(message)
+        self.status = status

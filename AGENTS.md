@@ -16,8 +16,8 @@ small and upstream-friendly.
 
 ## Checks
 
-`tests/` only covers the pure-pandas helpers in `cost.py` and `stats.py`
-(`uvx --with pandas pytest tests/`); everything else needs a Home Assistant
+`tests/` only covers `cost.py`, `stats.py` and pure helpers of the API client
+(`uvx --with pandas --with aiohttp --with pyjwt pytest tests/`); everything else needs a Home Assistant
 instance. CI runs the `pytest`, `hacs` and `hassfest` jobs on every PR; `hacs` and `hassfest` are required checks (ruleset managed in `mainman94/homelab`,
 `terraform/github`). Renaming a job silently breaks the ruleset — change both together.
 
@@ -29,7 +29,10 @@ instance. CI runs the `pytest`, `hacs` and `hassfest` jobs on every PR; `hacs` a
 - Data arrives once a day (no live values). Long-term statistics go into the
   `stromnetzgraz:energy_consumption_<meter>` external statistics, not into the
   `sensor.meter_*` entities. See README "Limitations".
-- The `sngraz` client often logs and returns `None`/`False` on HTTP errors instead
-  of raising: check return values (e.g. `authenticate()`), not just exceptions.
+- The `sngraz` client raises `SNGrazError` (with the response body) on HTTP errors
+  and `InvalidLogin` on a rejected login. It still returns `None` for missing data
+  (e.g. no readings), so check return values too.
+- The API reads every date as Vienna wall-clock time and ignores UTC offsets; format
+  dates with `sngraz.api_time()`.
 - Network calls belong in `__init__.async_setup_entry` (raise `ConfigEntryNotReady`
   / `ConfigEntryAuthFailed`); `sensor.py` setup only builds entities.

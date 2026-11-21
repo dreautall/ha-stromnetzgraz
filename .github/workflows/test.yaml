@@ -16,5 +16,5 @@ jobs:
         with:
           persist-credentials: false
       - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
-      # Only the pure-pandas helpers (cost.py, stats.py) are tested; the rest needs a Home Assistant instance.
-      - run: uvx --with pandas pytest tests/
+      # Only cost.py, stats.py and the API client's pure helpers are tested; the rest needs a Home Assistant instance.
+      - run: uvx --with pandas --with aiohttp --with pyjwt pytest tests/

@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import timedelta
 import logging
 import os
 import ssl
@@ -19,7 +18,7 @@ from homeassistant.const import (
 )
 
 from . import sngraz
-from .sngraz import StromNetzGraz, InvalidLogin
+from .sngraz import StromNetzGraz, InvalidLogin, SNGrazError
 
 PLATFORMS = [Platform.SENSOR]
 type SNGrazConfigEntry = ConfigEntry[StromNetzGraz]
@@ -53,9 +52,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: SNGrazConfigEntry) -> bo
     )
 
     try:
-        # sngraz returns False (instead of raising) when the login request fails.
-        if not await conn.authenticate():
-            raise ConfigEntryNotReady("Login request failed")
+        await conn.authenticate()
         # This fills in all installations and meters.
         await conn.update_info()
         if not conn.get_installations():
@@ -64,7 +61,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: SNGrazConfigEntry) -> bo
     except InvalidLogin as err:
         await conn.close_connection()
         raise ConfigEntryAuthFailed(f"Invalid login: {err}") from err
-    except (asyncio.TimeoutError, aiohttp.ClientError) as err:
+    except (asyncio.TimeoutError, aiohttp.ClientError, SNGrazError) as err:
         await conn.close_connection()
         raise ConfigEntryNotReady(f"Error connecting: {err}") from err
     except Exception:
@@ -81,21 +78,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: SNGrazConfigEntry) -> bo
 async def _async_prepare_meters(
     hass: HomeAssistant, entry: SNGrazConfigEntry, conn: StromNetzGraz
 ) -> None:
-    """Fix each meter's first reading date and store base readings that are missing."""
+    """Store the base reading (first meter reading) of meters that don't have one yet."""
     # Copy: mutating the stored dict in place would hide the change from async_update_entry.
     base_readings = dict(entry.data.get(CONF_BASE) or {})
     changed = False
     for installation in conn.get_installations():
         for meter in installation.get_meters():
-            # sngraz rounds readingsAvailableSince down to the hour, but the API rejects
-            # (HTTP 400) any fromDate before it; round up to the next hour instead.
-            if (first := await meter._get_first_reading_date()) is not None:
-                meter._first_reading_date = first.replace(second=0) + timedelta(hours=1)
-
             if str(meter.id) in base_readings:
                 continue
             # Fails when the API sends no meter reading (MR); retried on the next setup.
-            if (base_reading := await meter.get_first_reading()) is None:
+            try:
+                base_reading = await meter.get_first_reading()
+            except SNGrazError as err:
+                _LOGGER.warning("could not get first reading for %s: %s", meter.id, err)
+                base_reading = None
+            if base_reading is None:
                 _LOGGER.warning(
                     "could not get first reading for %s, summing consumption instead",
                     meter.id,

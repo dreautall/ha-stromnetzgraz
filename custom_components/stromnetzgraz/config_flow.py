@@ -18,7 +18,7 @@ from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import selector
 
-from .sngraz import InvalidLogin
+from .sngraz import InvalidLogin, SNGrazError
 from . import async_create_api
 from .const import DOMAIN
 
@@ -64,12 +64,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
         sn = await async_create_api(self.hass, username, password)
         try:
-            # sngraz returns False (instead of raising) when the login request fails.
-            if not await sn.authenticate():
-                errors["base"] = "cannot_connect"
+            await sn.authenticate()
         except asyncio.TimeoutError:
             errors["base"] = "timeout"
-        except aiohttp.ClientError:
+        except (aiohttp.ClientError, SNGrazError):
             errors["base"] = "cannot_connect"
         except InvalidLogin as err:
             errors["base"] = "invalid_login"

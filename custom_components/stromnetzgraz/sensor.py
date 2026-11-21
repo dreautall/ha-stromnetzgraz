@@ -3,7 +3,10 @@ from __future__ import annotations
 
 from datetime import timedelta, datetime
 from functools import partial
+import asyncio
 import logging
+
+import aiohttp
 import pandas
 
 from homeassistant.components.recorder import get_instance, history
@@ -27,15 +30,17 @@ from homeassistant.const import (
     CONF_BASE,
 )
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import (
     CoordinatorEntity,
     DataUpdateCoordinator,
+    UpdateFailed,
 )
 from homeassistant.util.unit_conversion import EnergyConverter
 
-from .sngraz import SNGrazMeter, SNGrazInstallation
+from .sngraz import InvalidLogin, SNGrazError, SNGrazMeter, SNGrazInstallation
 from . import SNGrazConfigEntry
 from .const import DOMAIN
 from .cost import add_cost, price_factor
@@ -145,8 +150,14 @@ class SNGrazDataCoordinator(DataUpdateCoordinator):
 
     async def _async_update_data(self):
         """Update data via API."""
-        await self._installation.fetch_consumption_data()
-        await self._insert_statistics()
+        try:
+            await self._installation.fetch_consumption_data()
+            # Also fetches: the first run imports the meter's whole history.
+            await self._insert_statistics()
+        except InvalidLogin as err:
+            raise ConfigEntryAuthFailed(f"Invalid login: {err}") from err
+        except (asyncio.TimeoutError, aiohttp.ClientError, SNGrazError) as err:
+            raise UpdateFailed(f"Error fetching data: {err}") from err
 
     async def _insert_statistics(self):
         """Insert statistics."""
