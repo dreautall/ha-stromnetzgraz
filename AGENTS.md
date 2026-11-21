@@ -8,8 +8,10 @@ small and upstream-friendly.
 
 - `custom_components/stromnetzgraz/`: the integration (`__init__.py`,
   `config_flow.py`, `sensor.py`, `cost.py`, `stats.py`, `const.py`).
-- `manifest.json`: version, HA dependencies, and pinned Python requirements
-  (`stromnetzgraz` client library, `pandas`).
+- `sngraz/`: the API client, taken over from the unmaintained
+  [stromnetzgraz](https://github.com/dreautall/stromnetzgraz) package (MIT, see
+  its `LICENSE`). Fix client bugs there instead of working around them.
+- `manifest.json`: version, HA dependencies, and Python requirements (`pandas`).
 - `strings.json` + `translations/{de,en}.json`: UI text.
 
 ## Checks

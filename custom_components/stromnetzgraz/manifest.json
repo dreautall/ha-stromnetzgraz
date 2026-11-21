@@ -9,6 +9,6 @@
   "documentation": "https://github.com/mainman94/ha-stromnetzgraz",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/mainman94/ha-stromnetzgraz/issues",
-  "requirements": ["pandas", "stromnetzgraz==0.1.8"],
+  "requirements": ["pandas"],
   "version": "0.1.18"
 }

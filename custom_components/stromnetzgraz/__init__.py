@@ -18,8 +18,8 @@ from homeassistant.const import (
     CONF_PASSWORD,
 )
 
-import sngraz
-from sngraz import StromNetzGraz, InvalidLogin
+from . import sngraz
+from .sngraz import StromNetzGraz, InvalidLogin
 
 PLATFORMS = [Platform.SENSOR]
 type SNGrazConfigEntry = ConfigEntry[StromNetzGraz]

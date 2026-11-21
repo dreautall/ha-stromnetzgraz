@@ -11,7 +11,8 @@ Home Assistant custom integration that imports Stromnetz Graz smart-meter data.
 | `custom_components/stromnetzgraz/__init__.py`     | Config entry setup, API client creation               |
 | `custom_components/stromnetzgraz/config_flow.py`  | The login form                                        |
 | `custom_components/stromnetzgraz/sensor.py`       | Sensors and the external long-term statistics import  |
-| `custom_components/stromnetzgraz/manifest.json`   | Version, requirements (`stromnetzgraz` client, pandas) |
+| `custom_components/stromnetzgraz/sngraz/`         | The Stromnetz Graz API client (from the `stromnetzgraz` package) |
+| `custom_components/stromnetzgraz/manifest.json`   | Version, requirements (pandas)                        |
 | `custom_components/stromnetzgraz/strings.json`    | UI text, mirrored in `translations/{de,en}.json`      |
 | `hacs.json`                                       | HACS metadata, including the minimum HA version       |
 | `.github/workflows/`                              | The `hacs` and `hassfest` checks                      |

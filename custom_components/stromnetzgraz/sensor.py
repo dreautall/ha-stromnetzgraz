@@ -35,7 +35,7 @@ from homeassistant.helpers.update_coordinator import (
 )
 from homeassistant.util.unit_conversion import EnergyConverter
 
-from sngraz import SNGrazMeter, SNGrazInstallation
+from .sngraz import SNGrazMeter, SNGrazInstallation
 from . import SNGrazConfigEntry
 from .const import DOMAIN
 from .cost import add_cost, price_factor

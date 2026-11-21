@@ -133,6 +133,7 @@ See [GitHub Releases](https://github.com/mainman94/ha-stromnetzgraz/releases/).
 
 ## Credits
 
-Originally written by [@dreautall](https://github.com/dreautall). The API
-client is [stromnetzgraz](https://github.com/dreautall/stromnetzgraz) on PyPI.
+Originally written by [@dreautall](https://github.com/dreautall), including the
+API client [stromnetzgraz](https://github.com/dreautall/stromnetzgraz), which is
+now maintained as part of this integration (`custom_components/stromnetzgraz/sngraz/`).
 Licensed under [MIT](LICENSE).

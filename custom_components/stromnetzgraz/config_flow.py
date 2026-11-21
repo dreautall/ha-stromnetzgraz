@@ -18,7 +18,7 @@ from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import selector
 
-from sngraz import InvalidLogin
+from .sngraz import InvalidLogin
 from . import async_create_api
 from .const import DOMAIN
 
