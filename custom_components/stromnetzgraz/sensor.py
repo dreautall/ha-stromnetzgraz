@@ -227,8 +227,11 @@ class SNGrazDataCoordinator(DataUpdateCoordinator):
         if df_hour.empty:
             return
 
+        # Continue from the window's first hour, not before it: that hour only holds part
+        # of its readings (the window starts mid-hour after the -1 s shift), so rewriting
+        # it would lower every sum after it, one more hour with each update.
         last_sum, last_start = await self._last_statistic(
-            statistic_id, df_hour.index[0].to_pydatetime() - timedelta(hours=1)
+            statistic_id, df_hour.index[0].to_pydatetime()
         )
         statistics = build_statistics(df_hour, base_reading, last_sum, last_start)
 
@@ -282,8 +285,9 @@ class SNGrazDataCoordinator(DataUpdateCoordinator):
             return
         statistic_id = f"{DOMAIN}:energy_cost_{meter.id}"
 
+        # Same partial first hour as for consumption.
         last_sum, last_start = await self._last_statistic(
-            statistic_id, costs.index[0].to_pydatetime() - timedelta(hours=1)
+            statistic_id, costs.index[0].to_pydatetime()
         )
         statistics = build_cost_statistics(costs, last_sum, last_start)
 
