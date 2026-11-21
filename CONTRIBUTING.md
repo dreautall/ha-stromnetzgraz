@@ -40,7 +40,7 @@ Data arrives once a day, so the statistics only change after the next import
 
 ## Pull requests
 
-- One topic per PR, branch off `master`.
+- One topic per PR, branch off `main`.
 - Bump `version` in `manifest.json`.
 - A new key in `strings.json` goes into both `translations/de.json` and
   `translations/en.json`; hassfest fails otherwise.
@@ -49,20 +49,20 @@ Data arrives once a day, so the statistics only change after the next import
   (`fix: survive missing meter readings`).
 
 Two checks must pass before a PR can merge: `hacs` (HACS validation) and
-`hassfest` (Home Assistant's manifest and translation checks). `master` is
+`hassfest` (Home Assistant's manifest and translation checks). `main` is
 protected; every change, including upstream syncs, goes through a PR.
 
 ## Syncing upstream
 
 ```shell
 git fetch upstream
-git switch -c chore/sync-upstream master
-git rebase upstream/master   # or cherry-pick the commits you want
+git switch -c chore/sync-upstream main
+git rebase upstream/master   # upstream's branch is still master; or cherry-pick
 git push -u origin chore/sync-upstream
 gh pr create --repo mainman94/ha-stromnetzgraz --fill
 ```
 
-GitHub's "Sync fork" button pushes to `master` directly and is blocked by the
+GitHub's "Sync fork" button pushes to `main` directly and is blocked by the
 branch ruleset.
 
 ## Releases
