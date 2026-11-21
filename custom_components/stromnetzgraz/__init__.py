@@ -8,7 +8,7 @@ import ssl
 import aiohttp
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.const import (
@@ -54,17 +54,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     try:
         await conn.authenticate()
-    except asyncio.TimeoutError as err:
-        raise ConfigEntryNotReady from err
-    except aiohttp.ClientError as err:
-        _LOGGER.error("Error connecting: %s ", err)
-        return False
     except InvalidLogin as err:
-        _LOGGER.error("Invalid Auth: %s", err)
-        return False
-    except Exception as exp:
-        _LOGGER.error("Failed to login. %s", exp)
-        return False
+        await conn.close_connection()
+        raise ConfigEntryAuthFailed(f"Invalid login: {err}") from err
+    except (asyncio.TimeoutError, aiohttp.ClientError) as err:
+        await conn.close_connection()
+        raise ConfigEntryNotReady(f"Error connecting: {err}") from err
+    except Exception:
+        await conn.close_connection()
+        raise
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 

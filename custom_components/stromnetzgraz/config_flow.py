@@ -1,6 +1,7 @@
 """Config flow for Stromnetz Graz integration."""
 from __future__ import annotations
 
+from collections.abc import Mapping
 import logging
 import asyncio
 from typing import Any
@@ -49,10 +50,20 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         await self.async_set_unique_id(user_input[CONF_USERNAME].lower())
         self._abort_if_unique_id_configured()
 
-        errors = {}
-        sn = await async_create_api(
-            self.hass, user_input[CONF_USERNAME], user_input[CONF_PASSWORD]
+        errors = await self._async_validate(
+            user_input[CONF_USERNAME], user_input[CONF_PASSWORD]
         )
+        if errors:
+            return self.async_show_form(
+                step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
+            )
+
+        return self.async_create_entry(title=user_input[CONF_USERNAME], data=user_input)
+
+    async def _async_validate(self, username: str, password: str) -> dict[str, str]:
+        """Try to log in; returns form errors (empty on success)."""
+        errors: dict[str, str] = {}
+        sn = await async_create_api(self.hass, username, password)
         try:
             await sn.authenticate()
         except asyncio.TimeoutError:
@@ -65,15 +76,33 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         except Exception:  # pylint: disable=broad-except
             _LOGGER.exception("Unexpected exception")
             errors["base"] = "unknown"
-
         await sn.close_connection()
+        return errors
 
-        if errors:
-            return self.async_show_form(
-                step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
+    async def async_step_reauth(self, entry_data: Mapping[str, Any]) -> FlowResult:
+        """Start re-authentication after the stored login was rejected."""
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Ask for a new password."""
+        entry = self._get_reauth_entry()
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            errors = await self._async_validate(
+                entry.data[CONF_USERNAME], user_input[CONF_PASSWORD]
             )
-
-        return self.async_create_entry(title=sn._username, data=user_input)
+            if not errors:
+                return self.async_update_reload_and_abort(
+                    entry, data_updates={CONF_PASSWORD: user_input[CONF_PASSWORD]}
+                )
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            data_schema=vol.Schema({vol.Required(CONF_PASSWORD): str}),
+            description_placeholders={"username": entry.data[CONF_USERNAME]},
+            errors=errors,
+        )
 
     @staticmethod
     @callback

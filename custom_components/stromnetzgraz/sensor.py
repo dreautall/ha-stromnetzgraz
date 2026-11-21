@@ -262,18 +262,13 @@ class SNGrazDataCoordinator(DataUpdateCoordinator):
                 None,
                 {"sum"},
             )
+            _sum = 0.0
+            last_stats_time = None  # POSIX timestamp, so DST can't shift the comparison
             if stat:
                 _sum = stat[statistic_id][0]["sum"]
                 last_stats_time = stat[statistic_id][0]["start"]
-                if isinstance(last_stats_time, float):
-                    last_stats_time = datetime.fromtimestamp(
-                        stat[statistic_id][0]["start"]
-                    )
-                else:
-                    last_stats_time = last_stats_time.replace(tzinfo=None)
-            else:
-                _sum = 0.0
-                last_stats_time = None
+                if isinstance(last_stats_time, datetime):
+                    last_stats_time = last_stats_time.timestamp()
 
             statistics = []
             last_reading = _sum
@@ -293,10 +288,7 @@ class SNGrazDataCoordinator(DataUpdateCoordinator):
 
                 # make sure minutes & (micro)seconds is 0, or HA will throw an error
                 start = start.to_pydatetime().replace(minute=0, second=0, microsecond=0)
-                if (
-                    last_stats_time is not None
-                    and start.replace(tzinfo=None) <= last_stats_time
-                ):
+                if last_stats_time is not None and start.timestamp() <= last_stats_time:
                     continue
 
                 _sum += consump
