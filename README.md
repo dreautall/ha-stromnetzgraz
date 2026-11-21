@@ -17,9 +17,11 @@ compared to upstream:
 - **Meters without meter readings get statistics.** Some meters only report
   consumption. Their history used to be skipped entirely; it is now summed up
   from the consumption.
-- **Totals stay correct.** An hour with 0 kWh could add a spike of roughly the
-  whole meter reading, and the repeated hour at the end of daylight saving time
-  was lost.
+- **Totals stay correct and match the web portal.** An hour with 0 kWh could
+  add a spike of roughly the whole meter reading, the repeated hour at the end
+  of daylight saving time was lost, and estimated quarter-hours were skipped.
+  Values are now read the way the portal does: single-rate scale (ET),
+  estimated values included.
 - **Missing meter readings no longer break the integration.** The update used to
   crash with `KeyError: 'MR'` and every sensor went `unavailable`.
 - **Energy costs** from a price entity, see [Energy costs](#energy-costs).
@@ -114,9 +116,6 @@ the field stops new costs from being calculated, but costs already stored stay.
   values for this source.
 - **Enabling IME later:** delete the integration and add it again, so the
   history is imported at 15-minute resolution.
-- **Estimated values are skipped.** Only quarter-hours that Stromnetz Graz
-  marks as measured are imported. Estimated ones (for example around the
-  daylight saving time change) leave a small gap.
 
 ## Troubleshooting
 

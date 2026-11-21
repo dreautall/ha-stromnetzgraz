@@ -370,12 +370,7 @@ class SNGrazMeter:
         readings = resp.get("readings")
         result: list[dict] = []
         for reading in readings:
-            res = {}
-            for rv in reading.get("readingValues"):
-                # Skip Estimated Values - probably wrong.
-                if rv.get("readingState") != "Valid":
-                    continue
-                res[rv.get("readingType")] = rv.get("value")
+            res = reading_values(reading)
             if res == {}:
                 continue
             # hax :( https://discuss.python.org/t/parse-z-timezone-suffix-in-datetime/2220/17
@@ -443,6 +438,19 @@ class SNGrazMeter:
     def lastMeterReading(self) -> Optional[int]:
         """Return the latest meter reading."""
         return self._last_reading
+
+
+def reading_values(reading: dict) -> dict:
+    """Values of one reading by type (CONSUMP, MR), taken the way the web portal does.
+
+    The portal only reads the single-rate scale (ET) and counts every value it has,
+    estimated ones included (it only marks them), so totals match the portal.
+    """
+    return {
+        rv.get("readingType"): rv.get("value")
+        for rv in reading.get("readingValues") or []
+        if rv.get("scale", "ET") == "ET" and rv.get("value") is not None
+    }
 
 
 def api_time(time: dt.datetime) -> str:
