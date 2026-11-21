@@ -93,8 +93,9 @@ async def _async_prepare_meters(
                 _LOGGER.warning("could not get first reading for %s: %s", meter.id, err)
                 base_reading = None
             if base_reading is None:
-                _LOGGER.warning(
-                    "could not get first reading for %s, summing consumption instead",
+                # Normal for meters that only report consumption.
+                _LOGGER.info(
+                    "no first reading for %s, summing consumption instead",
                     meter.id,
                 )
                 continue

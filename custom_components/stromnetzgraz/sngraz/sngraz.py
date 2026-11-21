@@ -423,7 +423,7 @@ class SNGrazMeter:
                 break
         
         if "MR" not in res:
-            _LOGGER.warning("first reading does not contain a meter reading value")
+            _LOGGER.debug("first reading does not contain a meter reading value")
             return None
 
         self._first_reading = res.get("MR")

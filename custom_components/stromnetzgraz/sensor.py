@@ -144,7 +144,8 @@ class SNGrazDataCoordinator(DataUpdateCoordinator):
             _LOGGER,
             config_entry=entry,
             name="Stromnetz Graz Sensor",
-            update_interval=timedelta(hours=1),
+            # Stromnetz Graz publishes the previous day's values once a day.
+            update_interval=timedelta(hours=6),
         )
         self._installation: SNGrazInstallation = installation
 
