@@ -48,8 +48,10 @@ compared to upstream:
 3. Install **Stromnetz Graz Integration** and restart Home Assistant.
 
 If you are switching from the upstream repository: remove it in HACS (not the
-integration under *Devices & services*), add this one and install it. The
-domain is the same, so your config entry and imported statistics stay.
+integration under *Devices & services*), add this one and install it. Both use
+the same domain, entity IDs and statistic IDs, so your config entry and imported
+statistics should carry over. This switch hasn't been tested end to end, so take
+a backup first.
 
 ### Manual
 
