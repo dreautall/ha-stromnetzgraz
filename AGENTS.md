@@ -13,6 +13,8 @@ small and upstream-friendly.
   its `LICENSE`). Fix client bugs there instead of working around them.
 - `manifest.json`: version, HA dependencies, and Python requirements (`pandas`).
 - `strings.json` + `translations/{de,en}.json`: UI text.
+- `brand/icon.png` (+ `@2x`): the icon HACS and Home Assistant show. A generic
+  lightning bolt on purpose, not the Stromnetz Graz logo (their trademark).
 
 ## Checks
 
