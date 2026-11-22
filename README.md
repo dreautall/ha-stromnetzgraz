@@ -111,7 +111,7 @@ the field stops new costs from being calculated, but costs already stored stay.
 
 - **No live data.** Stromnetz Graz publishes the previous day's values, so
   today's consumption always shows up the next day. The statistics are
-  refreshed every six hours, and the last 30 days are re-imported each time to
+  refreshed every hour, and the last 30 days are re-imported each time to
   pick up corrections.
 - **CO₂ and cost on the energy dashboard** expect live data and can show odd
   values for this source.
