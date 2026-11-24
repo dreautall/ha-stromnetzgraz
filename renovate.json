@@ -1,7 +1,22 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "minimumReleaseAge": "3 days",
   "extends": [
     "config:recommended",
     "helpers:pinGitHubActionDigests"
+  ],
+  "packageRules": [
+    {
+      "description": "Action and hook bumps are exercised by CI on the PR itself, so green checks are enough to merge them.",
+      "matchManagers": ["github-actions", "pre-commit"],
+      "matchUpdateTypes": ["minor", "patch", "digest", "pinDigest"],
+      "automerge": true
+    },
+    {
+      "description": "Non-major updates merge on green CI; 0.x versions break on minor bumps, so they stay manual.",
+      "matchUpdateTypes": ["minor", "patch", "digest", "pinDigest"],
+      "matchCurrentVersion": "!/^v?0\\./",
+      "automerge": true
+    }
   ]
 }
